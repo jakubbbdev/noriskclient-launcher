@@ -597,6 +597,9 @@ mod tests {
 
         assert_eq!(level.offset_seconds, 0.0);
         assert_eq!(level.offset_ticks(90_000), 0);
+        assert_eq!(level.start_seconds, None);
+        assert_eq!(level.end_seconds, None);
+        assert_eq!(level.window_ticks(90_000, 0), (None, None));
     }
 
     #[test]
@@ -605,6 +608,8 @@ mod tests {
             stream: 1,
             volume: 100,
             offset_seconds: 0.0,
+            start_seconds: None,
+            end_seconds: None,
         };
         assert!(!levels_change_anything(&[still]));
         assert!(levels_change_anything(&[TrackLevel {
@@ -622,11 +627,79 @@ mod tests {
     }
 
     #[test]
+    fn a_window_on_its_own_counts_as_a_change() {
+        let still = TrackLevel {
+            stream: 1,
+            volume: 100,
+            offset_seconds: 0.0,
+            start_seconds: None,
+            end_seconds: None,
+        };
+
+        assert!(!levels_change_anything(&[still]));
+        assert!(levels_change_anything(&[TrackLevel {
+            start_seconds: Some(1.5),
+            ..still
+        }]));
+        assert!(levels_change_anything(&[TrackLevel {
+            end_seconds: Some(4.0),
+            ..still
+        }]));
+        assert!(levels_change_anything(&[TrackLevel {
+            start_seconds: Some(0.0),
+            ..still
+        }]));
+    }
+
+    #[test]
+    fn a_window_that_is_not_a_number_is_no_window_at_all() {
+        let nonsense = TrackLevel {
+            stream: 1,
+            volume: 100,
+            offset_seconds: 0.0,
+            start_seconds: Some(f64::NAN),
+            end_seconds: Some(f64::INFINITY),
+        };
+
+        assert!(!nonsense.has_window());
+        assert!(!levels_change_anything(&[nonsense]));
+        assert_eq!(nonsense.window_ticks(90_000, 0), (None, None));
+    }
+
+    #[test]
+    fn a_window_becomes_ticks_counted_from_the_clips_own_start() {
+        let level = TrackLevel {
+            stream: 1,
+            volume: 100,
+            offset_seconds: 0.0,
+            start_seconds: Some(1.0),
+            end_seconds: Some(2.0),
+        };
+
+        assert_eq!(level.window_ticks(90_000, 0), (Some(90_000), Some(180_000)));
+        assert_eq!(
+            level.window_ticks(90_000, 1_000),
+            (Some(91_000), Some(181_000))
+        );
+        assert_eq!(
+            TrackLevel {
+                start_seconds: Some(f64::MAX),
+                end_seconds: Some(f64::MIN),
+                ..level
+            }
+            .window_ticks(90_000, 0),
+            (Some(i64::MAX), Some(i64::MIN))
+        );
+    }
+
+    #[test]
     fn an_offset_becomes_ticks_and_nonsense_becomes_nothing() {
         let at = |offset_seconds| TrackLevel {
             stream: 0,
             volume: 100,
             offset_seconds,
+            start_seconds: None,
+            end_seconds: None,
         };
 
         assert_eq!(at(0.25).offset_ticks(90_000), 22_500);
@@ -702,6 +775,10 @@ pub struct TrackLevel {
     pub volume: u32,
     #[serde(default)]
     pub offset_seconds: f64,
+    #[serde(default)]
+    pub start_seconds: Option<f64>,
+    #[serde(default)]
+    pub end_seconds: Option<f64>,
 }
 
 impl TrackLevel {
@@ -715,12 +792,28 @@ impl TrackLevel {
         }
         (self.offset_seconds * ticks_per_second as f64) as i64
     }
+
+    pub fn window_ticks(&self, ticks_per_second: i64, origin: i64) -> (Option<i64>, Option<i64>) {
+        let at = |seconds: Option<f64>| {
+            seconds
+                .filter(|s| s.is_finite())
+                .map(|s| origin.saturating_add((s * ticks_per_second as f64) as i64))
+        };
+        (at(self.start_seconds), at(self.end_seconds))
+    }
+
+    pub fn has_window(&self) -> bool {
+        let given = |seconds: Option<f64>| seconds.is_some_and(|s| s.is_finite());
+        given(self.start_seconds) || given(self.end_seconds)
+    }
 }
 
 pub fn levels_change_anything(levels: &[TrackLevel]) -> bool {
-    levels
-        .iter()
-        .any(|level| level.volume != 100 || (level.offset_seconds.is_finite() && level.offset_seconds != 0.0))
+    levels.iter().any(|level| {
+        level.volume != 100
+            || (level.offset_seconds.is_finite() && level.offset_seconds != 0.0)
+            || level.has_window()
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
