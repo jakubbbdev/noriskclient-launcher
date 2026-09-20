@@ -110,6 +110,11 @@ const SHAPES: { choice: ShapeChoice; ratio: number | null; label: string }[] = [
   { choice: "wide", ratio: 21 / 9, label: "clips.editor.shape.wide" },
 ];
 
+const LINK_MODES: { separate: boolean; icon: string; label: string }[] = [
+  { separate: false, icon: "solar:link-bold", label: "clips.editor.link.linked" },
+  { separate: true, icon: "solar:link-broken-bold", label: "clips.editor.link.separate" },
+];
+
 type Panel = "tools" | "audio" | "format";
 
 const PANELS: { id: Panel; icon: string; label: string }[] = [
@@ -211,19 +216,24 @@ export function ClipTrimmer({
 
   const lanes = useMemo(() => details?.audioTracks ?? [], [details]);
   const adjustable = useMemo(() => lanes.filter((track) => track.adjustable), [lanes]);
+  const movable = useMemo(
+    () => lanes.filter((track) => track.adjustable || lanes.length === 1),
+    [lanes],
+  );
 
+  const [separate, setSeparate] = useState(false);
   const [volumes, setVolumes] = useState<Record<number, number>>({});
   const [offsets, setOffsets] = useState<Record<number, number>>({});
   const [windows, setWindows] = useState<Record<number, LaneWindow>>({});
   useEffect(() => {
     setVolumes(Object.fromEntries(adjustable.map((track) => [track.stream, 100])));
-    setOffsets(Object.fromEntries(adjustable.map((track) => [track.stream, 0])));
-    setWindows(Object.fromEntries(adjustable.map((track) => [track.stream, NO_WINDOW])));
-  }, [adjustable]);
+    setOffsets(Object.fromEntries(movable.map((track) => [track.stream, 0])));
+    setWindows(Object.fromEntries(movable.map((track) => [track.stream, NO_WINDOW])));
+  }, [adjustable, movable]);
 
   const levels: TrackLevel[] = useMemo(
     () =>
-      adjustable.map((track) => {
+      movable.map((track) => {
         const own = laneWindow(windows[track.stream], start, end);
         return {
           stream: track.stream,
@@ -233,7 +243,7 @@ export function ClipTrimmer({
           endSeconds: own.end,
         };
       }),
-    [adjustable, end, offsets, start, volumes, windows],
+    [end, movable, offsets, start, volumes, windows],
   );
   const rebalanced = levels.some(
     (level) =>
@@ -250,7 +260,17 @@ export function ClipTrimmer({
     active: adjustable.length > 0,
   });
 
-  const drawn = adjustable.length > 0 ? adjustable : lanes;
+  const drawn = movable.length > 0 ? movable : lanes;
+
+  const link = useCallback(
+    (apart: boolean) => {
+      setSeparate(apart);
+      if (apart) return;
+      setOffsets(Object.fromEntries(movable.map((track) => [track.stream, 0])));
+      setWindows(Object.fromEntries(movable.map((track) => [track.stream, NO_WINDOW])));
+    },
+    [movable],
+  );
 
   useEffect(() => {
     if (duration > 0) setEnd((current) => (current === 0 ? duration : Math.min(current, duration)));
@@ -1028,6 +1048,23 @@ export function ClipTrimmer({
       </div>
 
       <div className="custom-scrollbar max-h-[34vh] shrink-0 overflow-y-auto border-t border-white/10 bg-black/20 px-5 py-3">
+        {movable.length > 0 && (
+          <div className="mb-2.5 flex items-center gap-3">
+            <TrackLink
+              separate={separate}
+              color={accentColor.value}
+              disabled={busy}
+              onChange={link}
+              t={t}
+            />
+            {separate && (
+              <p className="min-w-0 truncate font-minecraft text-xs text-white/50">
+                {t("clips.editor.link.hint")}
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="relative flex select-none flex-col gap-1.5">
           <div className="flex">
             <div className="w-44 shrink-0" />
@@ -1078,13 +1115,15 @@ export function ClipTrimmer({
 
           {drawn.map((track) => {
             const own = laneWindow(windows[track.stream], start, end);
+            const apart = separate && (track.adjustable || lanes.length === 1);
             return (
               <AudioLane
                 key={track.stream}
                 track={track}
                 name={trackName(track.label, t)}
+                movable={apart}
                 volume={track.adjustable ? (volumes[track.stream] ?? 100) : 100}
-                offset={track.adjustable ? (offsets[track.stream] ?? 0) : 0}
+                offset={apart ? (offsets[track.stream] ?? 0) : 0}
                 duration={duration}
                 tone={accentColor.light}
                 disabled={busy}
@@ -1310,9 +1349,51 @@ function Lane({
   );
 }
 
+function TrackLink({
+  separate,
+  color,
+  disabled,
+  onChange,
+  t,
+}: {
+  separate: boolean;
+  color: string;
+  disabled: boolean;
+  onChange: (separate: boolean) => void;
+  t: Translate;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-1 rounded-lg border border-white/10 bg-black/20 p-1">
+      {LINK_MODES.map((mode) => {
+        const on = separate === mode.separate;
+        return (
+          <button
+            key={mode.label}
+            type="button"
+            disabled={disabled}
+            aria-pressed={on}
+            title={t(mode.label)}
+            onClick={() => onChange(mode.separate)}
+            className={cn(
+              "flex items-center gap-1.5 rounded border border-transparent px-2 py-1 font-minecraft text-xs transition-colors",
+              on ? "text-white" : "text-white/50 hover:text-white",
+              disabled && "cursor-not-allowed opacity-40",
+            )}
+            style={on ? { borderColor: color, backgroundColor: `${color}30` } : undefined}
+          >
+            <Icon icon={mode.icon} className="h-3.5 w-3.5 shrink-0" />
+            {t(mode.label)}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function AudioLane({
   track,
   name,
+  movable,
   volume,
   offset,
   duration,
@@ -1335,6 +1416,7 @@ function AudioLane({
 }: {
   track: ClipAudioTrack;
   name: string;
+  movable: boolean;
   volume: number;
   offset: number;
   duration: number;
@@ -1356,7 +1438,7 @@ function AudioLane({
   t: Translate;
 }) {
   const muted = volume === 0;
-  const shiftable = track.adjustable && !disabled;
+  const shiftable = movable && !disabled;
   const span = duration > 0 ? duration : 1;
   const shift = (offset / span) * 100;
   const at = (seconds: number) => (seconds / span) * 100;
