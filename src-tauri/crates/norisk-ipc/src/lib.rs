@@ -685,12 +685,13 @@ pub struct PreviewTrack {
     pub path: PathBuf,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OverlayKind {
     Blur { strength: u32 },
     Box { shade: u8 },
     Arrow { shade: u8, thickness: u32, towards: Corner },
+    Text { content: String, size: u32, shade: u8 },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -703,7 +704,7 @@ pub enum Corner {
     BottomRight,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ClipOverlay {
     #[serde(flatten)]

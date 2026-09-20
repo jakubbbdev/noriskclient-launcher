@@ -22,6 +22,7 @@ default-features = false
 features = ["rt", "net", "io-util", "sync", "time", "macros", "process"]
 
 [target.'cfg(windows)'.dependencies]
+ab_glyph = "0.2.32"
 gif = "0.13"
 nnnoiseless = { version = "0.5.2", default-features = false }
 windows-core = "0.58"
