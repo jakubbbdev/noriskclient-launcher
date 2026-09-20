@@ -213,7 +213,29 @@ export function ClipGallery({
     });
   }, [clips, search, sort, favouritesOnly, game]);
 
-  if (clips === null || shown === null) {
+  const months = useMemo(() => {
+    if (shown === null) return null;
+    if (sort === "largest") return [{ key: "all", label: null, clips: shown }];
+
+    const out: { key: string; label: string | null; clips: ClipEntry[] }[] = [];
+    for (const clip of shown) {
+      const when = new Date(clip.createdAt * 1000);
+      const key = `${when.getFullYear()}-${when.getMonth()}`;
+      const open = out[out.length - 1];
+      if (open && open.key === key) {
+        open.clips.push(clip);
+      } else {
+        out.push({
+          key,
+          label: when.toLocaleDateString(undefined, { month: "long", year: "numeric" }),
+          clips: [clip],
+        });
+      }
+    }
+    return out;
+  }, [shown, sort]);
+
+  if (clips === null || shown === null || months === null) {
     return (
       <p className="text-white/70 font-smallcaps text-sm text-center py-4">
         {t("clips.gallery.loading")}
@@ -259,30 +281,45 @@ export function ClipGallery({
         />
       )}
 
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-        {shown.map((clip, index) => (
-          <ClipCard
-            key={clip.path}
-            clip={clip}
-            index={index}
-            busy={busy === clip.path}
-            onPlay={() => {
-              setSelected(clip);
-              void trackEvent("clip_played", { duration_s: clip.durationSeconds });
-            }}
-            onReveal={() =>
-              void revealClip(clip.path).catch((e) => toast.error(parseErrorMessage(e)))
-            }
-            onDelete={() => void remove(clip)}
-            onFavourite={(favourite) => void setFavourite(clip, favourite)}
-            onRename={() => setRenaming(clip)}
-            onThumbnail={refresh}
-            onVertical={() => setVertical(clip)}
-            onGif={() => void makeGif(clip)}
-            t={t}
-          />
-        ))}
-      </div>
+      {months.map((month) => (
+        <div key={month.key} className="flex flex-col gap-3">
+          {month.label && (
+            <div className="flex items-baseline gap-2 border-b border-white/10 pb-1.5">
+              <h3 className="font-minecraft text-base text-white/80 normal-case">
+                {month.label}
+              </h3>
+              <span className="font-minecraft text-xs text-white/40">
+                {month.clips.length}
+              </span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
+            {month.clips.map((clip, index) => (
+              <ClipCard
+                key={clip.path}
+                clip={clip}
+                index={index}
+                busy={busy === clip.path}
+                onPlay={() => {
+                  setSelected(clip);
+                  void trackEvent("clip_played", { duration_s: clip.durationSeconds });
+                }}
+                onReveal={() =>
+                  void revealClip(clip.path).catch((e) => toast.error(parseErrorMessage(e)))
+                }
+                onDelete={() => void remove(clip)}
+                onFavourite={(favourite) => void setFavourite(clip, favourite)}
+                onRename={() => setRenaming(clip)}
+                onThumbnail={refresh}
+                onVertical={() => setVertical(clip)}
+                onGif={() => void makeGif(clip)}
+                t={t}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
 
       {selected && (
         <ClipPlayer

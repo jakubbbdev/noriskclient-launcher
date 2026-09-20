@@ -94,8 +94,27 @@ export interface ExportedClip {
   sizeBytes: number;
 }
 
-export async function exportVertical(path: string): Promise<string> {
-  return invoke<string>("clip_export_vertical", { path });
+export type ClipShape = "vertical" | "square" | "wide";
+
+export interface ClipBlurOverlay {
+  kind: "blur";
+  strength: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  startSeconds: number;
+  endSeconds: number;
+}
+
+export type ClipOverlay = ClipBlurOverlay;
+
+export async function exportVertical(
+  path: string,
+  shape?: ClipShape,
+  overlays?: ClipOverlay[],
+): Promise<string> {
+  return invoke<string>("clip_export_vertical", { path, shape, overlays });
 }
 
 export interface ExportedGif {

@@ -4,10 +4,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@iconify/react";
 
 import { Button } from "../ui/buttons/Button";
+import { RangeSlider } from "../ui/RangeSlider";
 import { useThemeStore } from "../../store/useThemeStore";
-import type { ClipDetails, TrackLevel } from "../../services/clip-service";
+import {
+  exportVertical,
+  type ClipDetails,
+  type ClipOverlay,
+  type ClipShape,
+  type ExportProgress,
+  type ExportedClip,
+  type TrackLevel,
+} from "../../services/clip-service";
 import { TrackLevelControl, Waveform, trackName } from "./ClipTimeline";
+import { ClipIconButton } from "./ClipIconButton";
 import { cn } from "../../lib/utils";
+import { parseErrorMessage } from "../../utils/error-utils";
 import { useTrimPreview } from "./useTrimPreview";
 
 const MIN_LENGTH = 0.5;
@@ -18,6 +29,44 @@ const THUMB_WIDTH = 160;
 const THUMB_HEIGHT = 90;
 
 const NUDGE = 0.1;
+
+const MIN_BOX = 0.05;
+
+const DEFAULT_BLUR = 12;
+
+type ShapeChoice = ClipShape | "original";
+
+const SHAPES: { choice: ShapeChoice; ratio: number | null; label: string }[] = [
+  { choice: "original", ratio: null, label: "clips.editor.shape.original" },
+  { choice: "vertical", ratio: 9 / 16, label: "clips.editor.shape.vertical" },
+  { choice: "square", ratio: 1, label: "clips.editor.shape.square" },
+  { choice: "wide", ratio: 21 / 9, label: "clips.editor.shape.wide" },
+];
+
+interface BoxDrag {
+  index: number;
+  mode: "move" | "resize";
+  fromX: number;
+  fromY: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+interface BarDrag {
+  index: number;
+  mode: "move" | "start" | "end";
+  fromX: number;
+  startSeconds: number;
+  endSeconds: number;
+}
+
+type ExportStage =
+  | { kind: "idle" }
+  | { kind: "running"; done: number; total: number }
+  | { kind: "done" }
+  | { kind: "failed"; why: string };
 
 interface Props {
   src: string;
@@ -43,12 +92,22 @@ export function ClipTrimmer({
   const accentColor = useThemeStore((state) => state.accentColor);
   const videoRef = useRef<HTMLVideoElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
 
   const [start, setStart] = useState(0);
   const [end, setEnd] = useState(0);
   const [dragging, setDragging] = useState<"start" | "end" | null>(null);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
+
+  const [ratio, setRatio] = useState(16 / 9);
+  const [overlays, setOverlays] = useState<ClipOverlay[]>([]);
+  const [chosen, setChosen] = useState<number | null>(null);
+  const [shape, setShape] = useState<ShapeChoice>("original");
+  const [boxDrag, setBoxDrag] = useState<BoxDrag | null>(null);
+  const [barDrag, setBarDrag] = useState<BarDrag | null>(null);
+  const [stage, setStage] = useState<ExportStage>({ kind: "idle" });
 
   const lanes = useMemo(() => details?.audioTracks ?? [], [details]);
   const adjustable = useMemo(() => lanes.filter((track) => track.adjustable), [lanes]);
@@ -130,6 +189,146 @@ export function ClipTrimmer({
     };
   }, [dragging, moveHandle, secondsAt]);
 
+  const editOverlay = useCallback((index: number, patch: Partial<ClipOverlay>) => {
+    setOverlays((current) =>
+      current.map((overlay, at) => (at === index ? { ...overlay, ...patch } : overlay)),
+    );
+  }, []);
+
+  const addBlur = useCallback(() => {
+    setOverlays((current) => [
+      ...current,
+      {
+        kind: "blur",
+        strength: DEFAULT_BLUR,
+        left: 0.25,
+        top: 0.25,
+        width: 0.5,
+        height: 0.5,
+        startSeconds: start,
+        endSeconds: end,
+      },
+    ]);
+    setChosen(overlays.length);
+  }, [end, overlays.length, start]);
+
+  const dropOverlay = useCallback((index: number) => {
+    setOverlays((current) => current.filter((_, at) => at !== index));
+    setChosen(null);
+  }, []);
+
+  useEffect(() => {
+    if (!boxDrag) return;
+    const move = (event: PointerEvent) => {
+      const rect = frameRef.current?.getBoundingClientRect();
+      if (!rect || rect.width === 0 || rect.height === 0) return;
+      const byX = (event.clientX - boxDrag.fromX) / rect.width;
+      const byY = (event.clientY - boxDrag.fromY) / rect.height;
+      if (boxDrag.mode === "move") {
+        editOverlay(boxDrag.index, {
+          left: clamp(boxDrag.left + byX, 0, 1 - boxDrag.width),
+          top: clamp(boxDrag.top + byY, 0, 1 - boxDrag.height),
+        });
+      } else {
+        editOverlay(boxDrag.index, {
+          width: clamp(boxDrag.width + byX, MIN_BOX, 1 - boxDrag.left),
+          height: clamp(boxDrag.height + byY, MIN_BOX, 1 - boxDrag.top),
+        });
+      }
+    };
+    const up = () => setBoxDrag(null);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  }, [boxDrag, editOverlay]);
+
+  useEffect(() => {
+    if (!barDrag) return;
+    const move = (event: PointerEvent) => {
+      const rect = trackRef.current?.getBoundingClientRect();
+      if (!rect || rect.width === 0 || duration <= 0) return;
+      const by = ((event.clientX - barDrag.fromX) / rect.width) * duration;
+      if (barDrag.mode === "move") {
+        const span = barDrag.endSeconds - barDrag.startSeconds;
+        const from = clamp(barDrag.startSeconds + by, 0, duration - span);
+        editOverlay(barDrag.index, { startSeconds: from, endSeconds: from + span });
+      } else if (barDrag.mode === "start") {
+        editOverlay(barDrag.index, {
+          startSeconds: clamp(barDrag.startSeconds + by, 0, barDrag.endSeconds - MIN_LENGTH),
+        });
+      } else {
+        editOverlay(barDrag.index, {
+          endSeconds: clamp(barDrag.endSeconds + by, barDrag.startSeconds + MIN_LENGTH, duration),
+        });
+      }
+    };
+    const up = () => setBarDrag(null);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  }, [barDrag, duration, editOverlay]);
+
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    let alive = true;
+
+    void (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      const stops = await Promise.all([
+        listen<ExportProgress>("clip_export_progress", (event) => {
+          if (!samePath(event.payload.source, path)) return;
+          setStage({ kind: "running", done: event.payload.done, total: event.payload.total });
+        }),
+        listen<ExportedClip>("clip_exported", (event) => {
+          if (!samePath(event.payload.source, path)) return;
+          setStage({ kind: "done" });
+        }),
+      ]);
+      if (!alive) {
+        stops.forEach((off) => off());
+        return;
+      }
+      stop = () => stops.forEach((off) => off());
+    })();
+
+    return () => {
+      alive = false;
+      stop?.();
+    };
+  }, [path]);
+
+  const runExport = useCallback(async () => {
+    if (shape === "original") return;
+    setStage({ kind: "running", done: 0, total: 0 });
+    try {
+      await exportVertical(path, shape, overlays);
+    } catch (e) {
+      console.error("Could not export the clip", e);
+      setStage({ kind: "failed", why: parseErrorMessage(e) });
+    }
+  }, [overlays, path, shape]);
+
+  const guide = useMemo(() => {
+    const target = SHAPES.find((entry) => entry.choice === shape)?.ratio;
+    if (!target || ratio <= 0) return null;
+    return ratio > target
+      ? { width: target / ratio, height: 1 }
+      : { width: 1, height: ratio / target };
+  }, [ratio, shape]);
+
+  const picked = chosen === null ? null : (overlays[chosen] ?? null);
+
+  const exportPercent =
+    stage.kind === "running" && stage.total > 0
+      ? Math.round((stage.done / stage.total) * 100)
+      : null;
+
   const preview = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -162,28 +361,89 @@ export function ClipTrimmer({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="relative overflow-hidden rounded-lg bg-black border border-white/10">
-        <video
-          ref={videoRef}
-          src={src}
-          className="max-h-[48vh] w-full"
-          onClick={preview}
-        />
-        {!playing && (
-          <button
-            type="button"
+      <div className="flex items-start gap-3">
+        <div className="flex shrink-0 flex-col items-center gap-2 rounded-lg bg-black/20 border border-white/10 px-2 py-2">
+          <span className="font-smallcaps text-[0.65rem] uppercase tracking-wider text-white/40">
+            {t("clips.editor.tools")}
+          </span>
+          <ClipIconButton
+            icon="solar:magic-stick-bold"
+            label={t("clips.editor.tool.blur")}
+            onClick={addBlur}
+            disabled={busy}
+          />
+        </div>
+
+        <div
+          ref={frameRef}
+          className="relative mx-auto w-full overflow-hidden rounded-lg bg-black border border-white/10"
+          style={{ aspectRatio: `${ratio}`, maxWidth: `calc(48vh * ${ratio})` }}
+        >
+          <video
+            ref={videoRef}
+            src={src}
+            className="block h-full w-full object-contain"
             onClick={preview}
-            aria-label={t("clips.trim.preview")}
-            className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-[2px] transition-colors hover:bg-black/40"
-          >
-            <span
-              className="flex h-14 w-14 items-center justify-center rounded-full border border-white/20"
-              style={{ backgroundColor: `${accentColor.value}40` }}
+            onLoadedMetadata={(event) => {
+              const video = event.currentTarget;
+              if (video.videoWidth > 0 && video.videoHeight > 0) {
+                setRatio(video.videoWidth / video.videoHeight);
+              }
+            }}
+          />
+
+          {!playing && (
+            <button
+              type="button"
+              onClick={preview}
+              aria-label={t("clips.trim.preview")}
+              className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-[2px] transition-colors hover:bg-black/40"
             >
-              <Icon icon="solar:play-bold" className="h-7 w-7 text-white" />
-            </span>
-          </button>
-        )}
+              <span
+                className="flex h-14 w-14 items-center justify-center rounded-full border border-white/20"
+                style={{ backgroundColor: `${accentColor.value}40` }}
+              >
+                <Icon icon="solar:play-bold" className="h-7 w-7 text-white" />
+              </span>
+            </button>
+          )}
+
+          {guide && (
+            <div
+              className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 border-2"
+              style={{
+                width: `${guide.width * 100}%`,
+                height: `${guide.height * 100}%`,
+                borderColor: accentColor.value,
+                boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.55)",
+              }}
+            />
+          )}
+
+          {overlays.map((overlay, index) => (
+            <OverlayBox
+              key={index}
+              overlay={overlay}
+              active={chosen === index}
+              color={accentColor.value}
+              label={t("clips.editor.overlay.name", { index: index + 1 })}
+              onPick={() => setChosen(index)}
+              onGrab={(mode, event) => {
+                setChosen(index);
+                setBoxDrag({
+                  index,
+                  mode,
+                  fromX: event.clientX,
+                  fromY: event.clientY,
+                  left: overlay.left,
+                  top: overlay.top,
+                  width: overlay.width,
+                  height: overlay.height,
+                });
+              }}
+            />
+          ))}
+        </div>
       </div>
 
       <div className="flex items-end justify-center gap-8">
@@ -285,7 +545,97 @@ export function ClipTrimmer({
           />
         </div>
 
-        <p className="min-h-[1.25rem] font-minecraft text-xs text-white/50">{t("clips.trim.hint")}</p>
+        {overlays.length > 0 && (
+          <div ref={trackRef} className="flex select-none flex-col gap-1">
+            {overlays.map((overlay, index) => (
+              <OverlayBar
+                key={index}
+                overlay={overlay}
+                duration={duration}
+                active={chosen === index}
+                color={accentColor.value}
+                name={t("clips.editor.overlay.name", { index: index + 1 })}
+                onPick={() => setChosen(index)}
+                onGrab={(mode, event) => {
+                  setChosen(index);
+                  setBarDrag({
+                    index,
+                    mode,
+                    fromX: event.clientX,
+                    startSeconds: overlay.startSeconds,
+                    endSeconds: overlay.endSeconds,
+                  });
+                }}
+              />
+            ))}
+          </div>
+        )}
+
+        <p className="min-h-[1.25rem] font-minecraft text-xs text-white/50">
+          {overlays.length > 0 ? t("clips.editor.overlay.hint") : t("clips.trim.hint")}
+        </p>
+      </div>
+
+      {picked !== null && chosen !== null && (
+        <div className="flex items-center gap-4 rounded-lg bg-black/20 border border-white/10 px-4 py-3">
+          <span className="w-28 shrink-0 truncate font-minecraft text-sm text-white/80">
+            {t("clips.editor.overlay.strength")}
+          </span>
+
+          <div className="min-w-0 flex-1">
+            <RangeSlider
+              value={picked.strength}
+              onChange={(strength) => editOverlay(chosen, { strength })}
+              min={1}
+              max={64}
+              step={1}
+              size="sm"
+              showValue={false}
+              disabled={busy}
+              label={t("clips.editor.overlay.strength")}
+            />
+          </div>
+
+          <span className="w-10 shrink-0 text-right font-minecraft text-sm text-white">
+            {picked.strength}
+          </span>
+
+          <ClipIconButton
+            icon="solar:trash-bin-trash-bold"
+            label={t("clips.editor.overlay.remove")}
+            tone="danger"
+            tooltipPosition="top"
+            onClick={() => dropOverlay(chosen)}
+            disabled={busy}
+          />
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3 rounded-lg bg-black/20 border border-white/10 px-4 py-3">
+        <span className="font-smallcaps text-xs uppercase tracking-wider text-white/50">
+          {t("clips.editor.shape.label")}
+        </span>
+        {SHAPES.map((entry) => (
+          <button
+            key={entry.choice}
+            type="button"
+            onClick={() => setShape(entry.choice)}
+            disabled={busy}
+            className={cn(
+              "rounded border px-2.5 py-1 font-minecraft text-xs transition-colors",
+              shape === entry.choice
+                ? "text-white"
+                : "border-white/10 bg-black/30 text-white/60 hover:text-white",
+            )}
+            style={
+              shape === entry.choice
+                ? { borderColor: accentColor.value, backgroundColor: `${accentColor.value}30` }
+                : undefined
+            }
+          >
+            {t(entry.label)}
+          </button>
+        ))}
       </div>
 
       {adjustable.length > 0 && (
@@ -325,7 +675,52 @@ export function ClipTrimmer({
           {t("clips.trim.preview")}
         </Button>
 
-        <div className="flex-1" />
+        {stage.kind === "running" ? (
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5 px-4">
+            <div className="h-1.5 overflow-hidden rounded-full bg-black/40 border border-white/10">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-[width] duration-200",
+                  exportPercent === null && "w-1/3 animate-pulse",
+                )}
+                style={{
+                  backgroundColor: accentColor.value,
+                  width: exportPercent === null ? undefined : `${Math.max(2, exportPercent)}%`,
+                }}
+              />
+            </div>
+            <p className="font-minecraft text-xs text-white/60">
+              {exportPercent === null
+                ? t("clips.editor.export.starting")
+                : t("clips.editor.export.progress", { percent: exportPercent })}
+            </p>
+          </div>
+        ) : (
+          <p className="min-w-0 flex-1 truncate px-4 font-minecraft text-xs text-white/60">
+            {stage.kind === "failed"
+              ? stage.why
+              : stage.kind === "done"
+                ? t("clips.editor.export.done")
+                : shape === "original"
+                  ? t("clips.editor.export.needs_shape")
+                  : ""}
+          </p>
+        )}
+
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => void runExport()}
+          disabled={busy || shape === "original" || stage.kind === "running"}
+          icon={
+            <Icon
+              icon={stage.kind === "running" ? "svg-spinners:ring-resize" : "solar:smartphone-bold"}
+              className="w-4 h-4"
+            />
+          }
+        >
+          {stage.kind === "failed" ? t("clips.editor.export.retry") : t("clips.editor.export.action")}
+        </Button>
 
         <Button variant="secondary" size="sm" onClick={onCancel} disabled={busy}>
           {t("clips.trim.cancel")}
@@ -409,6 +804,152 @@ function Handle({
       </span>
     </button>
   );
+}
+
+function OverlayBox({
+  overlay,
+  active,
+  color,
+  label,
+  onPick,
+  onGrab,
+}: {
+  overlay: ClipOverlay;
+  active: boolean;
+  color: string;
+  label: string;
+  onPick: () => void;
+  onGrab: (mode: "move" | "resize", event: { clientX: number; clientY: number }) => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={label}
+      aria-pressed={active}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onGrab("move", event);
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onPick();
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        onPick();
+      }}
+      className={cn(
+        "absolute cursor-move rounded-sm border-2 transition-colors focus:outline-none",
+        active ? "bg-white/5" : "border-white/40 bg-black/10 hover:border-white/70",
+      )}
+      style={{
+        left: `${overlay.left * 100}%`,
+        top: `${overlay.top * 100}%`,
+        width: `${overlay.width * 100}%`,
+        height: `${overlay.height * 100}%`,
+        backdropFilter: `blur(${Math.max(1, overlay.strength / 4)}px)`,
+        borderColor: active ? color : undefined,
+        boxShadow: active ? `0 0 10px ${color}80` : undefined,
+      }}
+    >
+      <span
+        role="presentation"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onGrab("resize", event);
+        }}
+        className="absolute -bottom-1 -right-1 h-3.5 w-3.5 cursor-nwse-resize rounded-sm border border-black/50"
+        style={{ backgroundColor: active ? color : "rgba(255, 255, 255, 0.7)" }}
+      />
+    </div>
+  );
+}
+
+function OverlayBar({
+  overlay,
+  duration,
+  active,
+  color,
+  name,
+  onPick,
+  onGrab,
+}: {
+  overlay: ClipOverlay;
+  duration: number;
+  active: boolean;
+  color: string;
+  name: string;
+  onPick: () => void;
+  onGrab: (mode: "move" | "start" | "end", event: { clientX: number }) => void;
+}) {
+  const span = duration > 0 ? duration : 1;
+  const left = (overlay.startSeconds / span) * 100;
+  const width = ((overlay.endSeconds - overlay.startSeconds) / span) * 100;
+
+  return (
+    <div className="relative h-7 overflow-hidden rounded bg-black/40 border border-white/10">
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={name}
+        aria-pressed={active}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          onGrab("move", event);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          onPick();
+        }}
+        className={cn(
+          "absolute inset-y-0 flex cursor-grab items-center justify-center rounded border focus:outline-none",
+          active ? "" : "border-white/20 bg-white/10 hover:bg-white/20",
+        )}
+        style={{
+          left: `${left}%`,
+          width: `${width}%`,
+          borderColor: active ? color : undefined,
+          backgroundColor: active ? `${color}50` : undefined,
+        }}
+      >
+        <span className="pointer-events-none truncate px-3 font-minecraft text-xs text-white/80">
+          {name}
+        </span>
+        <span
+          role="presentation"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onGrab("start", event);
+          }}
+          className="absolute inset-y-0 left-0 w-2 cursor-ew-resize bg-white/30 hover:bg-white/60"
+        />
+        <span
+          role="presentation"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onGrab("end", event);
+          }}
+          className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-white/30 hover:bg-white/60"
+        />
+      </div>
+    </div>
+  );
+}
+
+function clamp(value: number, low: number, high: number): number {
+  return Math.max(low, Math.min(value, Math.max(low, high)));
+}
+
+function samePath(a: string, b: string): boolean {
+  const flatten = (path: string) => path.replace(/\\/g, "/").toLowerCase();
+  return flatten(a) === flatten(b);
 }
 
 function useFilmstrip(src: string, duration: number): string | null {
