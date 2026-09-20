@@ -214,11 +214,15 @@ export async function trimClip(
   startSeconds: number,
   endSeconds: number,
   levels?: TrackLevel[],
+  videoStartSeconds?: number | null,
+  videoEndSeconds?: number | null,
 ): Promise<string> {
   return invoke<string>("clip_trim", {
     path,
     startSeconds,
     endSeconds,
+    videoStartSeconds: videoStartSeconds ?? null,
+    videoEndSeconds: videoEndSeconds ?? null,
     levels: levels?.map((level) => ({
       stream: level.stream,
       volume: level.volume,

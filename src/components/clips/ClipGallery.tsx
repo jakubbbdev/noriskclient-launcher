@@ -521,10 +521,16 @@ function ClipPlayer({
   }, [clip.path]);
 
   const save = useCallback(
-    async (startSeconds: number, endSeconds: number, levels: TrackLevel[]) => {
+    async (
+      startSeconds: number,
+      endSeconds: number,
+      levels: TrackLevel[],
+      videoStartSeconds: number | null,
+      videoEndSeconds: number | null,
+    ) => {
       setSaving(true);
       try {
-        await trimClip(clip.path, startSeconds, endSeconds, levels);
+        await trimClip(clip.path, startSeconds, endSeconds, levels, videoStartSeconds, videoEndSeconds);
         toast.success(t("clips.trim.saved"));
         setTrimming(false);
       } catch (e) {

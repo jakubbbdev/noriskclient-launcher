@@ -176,7 +176,13 @@ interface Props {
   busy: boolean;
   details: ClipDetails | null;
   onCancel: () => void;
-  onSave: (startSeconds: number, endSeconds: number, levels: TrackLevel[]) => void;
+  onSave: (
+    startSeconds: number,
+    endSeconds: number,
+    levels: TrackLevel[],
+    videoStartSeconds: number | null,
+    videoEndSeconds: number | null,
+  ) => void;
   t: Translate;
 }
 
@@ -222,6 +228,7 @@ export function ClipTrimmer({
   );
 
   const [separate, setSeparate] = useState(false);
+  const [picture, setPicture] = useState<LaneWindow>(NO_WINDOW);
   const [volumes, setVolumes] = useState<Record<number, number>>({});
   const [offsets, setOffsets] = useState<Record<number, number>>({});
   const [windows, setWindows] = useState<Record<number, LaneWindow>>({});
@@ -230,6 +237,8 @@ export function ClipTrimmer({
     setOffsets(Object.fromEntries(movable.map((track) => [track.stream, 0])));
     setWindows(Object.fromEntries(movable.map((track) => [track.stream, NO_WINDOW])));
   }, [adjustable, movable]);
+
+  const shot = laneWindow(picture, start, end);
 
   const levels: TrackLevel[] = useMemo(
     () =>
@@ -265,11 +274,19 @@ export function ClipTrimmer({
   const link = useCallback(
     (apart: boolean) => {
       setSeparate(apart);
-      if (apart) return;
+      if (apart) {
+        setPicture({ start: tidy(start), end: tidy(end) });
+        setStart(0);
+        setEnd(duration);
+        return;
+      }
+      setStart(shot.from);
+      setEnd(shot.to);
+      setPicture(NO_WINDOW);
       setOffsets(Object.fromEntries(movable.map((track) => [track.stream, 0])));
       setWindows(Object.fromEntries(movable.map((track) => [track.stream, NO_WINDOW])));
     },
-    [movable],
+    [duration, end, movable, shot.from, shot.to, start],
   );
 
   useEffect(() => {
@@ -333,6 +350,19 @@ export function ClipTrimmer({
 
   const moveHandle = useCallback(
     (which: "start" | "end", seconds: number) => {
+      if (separate) {
+        const next =
+          which === "start"
+            ? clamp(seconds, start, shot.to - MIN_LENGTH)
+            : clamp(seconds, shot.from + MIN_LENGTH, end);
+        setPicture(
+          which === "start"
+            ? { start: tidy(next), end: shot.end }
+            : { start: shot.start, end: tidy(next) },
+        );
+        seek(next);
+        return;
+      }
       if (which === "start") {
         const next = Math.max(0, Math.min(seconds, end - MIN_LENGTH));
         setStart(next);
@@ -343,7 +373,7 @@ export function ClipTrimmer({
         seek(next);
       }
     },
-    [duration, end, seek, start],
+    [duration, end, seek, separate, shot.end, shot.from, shot.start, shot.to, start],
   );
 
   useEffect(() => {
@@ -587,46 +617,46 @@ export function ClipTrimmer({
 
   const shapeLabel = SHAPES.find((entry) => entry.choice === shape)?.label ?? SHAPES[0].label;
 
-  const clipMasks = (
+  const clipMasks = (from: number, to: number) => (
     <>
       <div
         className="absolute inset-y-0 left-0 bg-black/70"
-        style={{ width: `${percent(start)}%` }}
+        style={{ width: `${percent(from)}%` }}
       />
       <div
         className="absolute inset-y-0 right-0 bg-black/70"
-        style={{ width: `${100 - percent(end)}%` }}
+        style={{ width: `${100 - percent(to)}%` }}
       />
       <div
         className="absolute inset-y-0 border-x-2"
         style={{
-          left: `${percent(start)}%`,
-          width: `${percent(kept)}%`,
+          left: `${percent(from)}%`,
+          width: `${percent(Math.max(0, to - from))}%`,
           borderColor: accentColor.value,
         }}
       />
     </>
   );
 
-  const clipHandles = (
+  const clipHandles = (from: number, to: number) => (
     <>
       <Handle
-        left={percent(start)}
+        left={percent(from)}
         active={dragging === "start"}
-        time={formatTime(start)}
+        time={formatTime(from)}
         label={t("clips.trim.handle_start")}
         color={accentColor.value}
         onGrab={() => setDragging("start")}
-        onNudge={(by) => moveHandle("start", start + by)}
+        onNudge={(by) => moveHandle("start", from + by)}
       />
       <Handle
-        left={percent(end)}
+        left={percent(to)}
         active={dragging === "end"}
-        time={formatTime(end)}
+        time={formatTime(to)}
         label={t("clips.trim.handle_end")}
         color={accentColor.value}
         onGrab={() => setDragging("end")}
-        onNudge={(by) => moveHandle("end", end + by)}
+        onNudge={(by) => moveHandle("end", to + by)}
       />
     </>
   );
@@ -679,7 +709,7 @@ export function ClipTrimmer({
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => onSave(start, end, levels)}
+            onClick={() => onSave(start, end, levels, shot.start, shot.end)}
             disabled={busy || kept < MIN_LENGTH}
             icon={
               <Icon
@@ -1085,9 +1115,13 @@ export function ClipTrimmer({
         </span>
 
         <div className="ml-auto flex items-center gap-6">
-          <Readout label={t("clips.trim.from")} value={formatTime(start)} />
-          <Readout label={t("clips.trim.kept_label")} value={`${kept.toFixed(1)} s`} strong />
-          <Readout label={t("clips.trim.to")} value={formatTime(end)} />
+          <Readout label={t("clips.trim.from")} value={formatTime(shot.from)} />
+          <Readout
+            label={t("clips.trim.kept_label")}
+            value={`${Math.max(0, shot.to - shot.from).toFixed(1)} s`}
+            strong
+          />
+          <Readout label={t("clips.trim.to")} value={formatTime(shot.to)} />
         </div>
       </div>
 
@@ -1158,8 +1192,8 @@ export function ClipTrimmer({
 
             {separate && (
               <div className="pointer-events-none absolute inset-0 z-10">
-                {clipMasks}
-                {clipHandles}
+                {clipMasks(shot.from, shot.to)}
+                {clipHandles(shot.from, shot.to)}
               </div>
             )}
           </Lane>
@@ -1231,13 +1265,13 @@ export function ClipTrimmer({
           ))}
 
           <div className="pointer-events-none absolute inset-y-0 left-44 right-0">
-            {!separate && clipMasks}
+            {!separate && clipMasks(start, end)}
             <div
               className="absolute inset-y-0 w-px bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]"
               style={{ left: `${percent(playhead)}%` }}
             />
 
-            {!separate && clipHandles}
+            {!separate && clipHandles(start, end)}
           </div>
         </div>
 
