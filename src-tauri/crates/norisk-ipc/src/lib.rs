@@ -689,6 +689,18 @@ pub struct PreviewTrack {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OverlayKind {
     Blur { strength: u32 },
+    Box { shade: u8 },
+    Arrow { shade: u8, thickness: u32, towards: Corner },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Corner {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    #[default]
+    BottomRight,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]

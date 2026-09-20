@@ -1,4 +1,4 @@
-use norisk_ipc::{ClipOverlay, OverlayKind};
+use norisk_ipc::{ClipOverlay, Corner, OverlayKind};
 
 const BLUR_PASSES: usize = 3;
 
@@ -52,6 +52,47 @@ pub fn apply(plane: &mut Plane, rect: Rect, kind: &OverlayKind) {
     };
     match kind {
         OverlayKind::Blur { strength } => blur(plane, rect, *strength),
+        OverlayKind::Box { shade } => fill(plane, rect, *shade),
+        OverlayKind::Arrow {
+            shade,
+            thickness,
+            towards,
+        } => arrow(plane, rect, *shade, *thickness, *towards),
+    }
+}
+
+fn fill(plane: &mut Plane, rect: Rect, shade: u8) {
+    for y in rect.top..rect.top + rect.height {
+        let start = y * plane.stride + rect.left;
+        plane.data[start..start + rect.width].fill(shade);
+    }
+}
+
+fn arrow(plane: &mut Plane, rect: Rect, shade: u8, thickness: u32, towards: Corner) {
+    let thickness = (thickness.max(1) as usize).min(rect.width.min(rect.height));
+    let (width, height) = (rect.width as f64, rect.height as f64);
+
+    let flip_x = matches!(towards, Corner::TopLeft | Corner::BottomLeft);
+    let flip_y = matches!(towards, Corner::TopLeft | Corner::TopRight);
+
+    let half = thickness as f64 / 2.0;
+    let head = (width.min(height) / 3.0).max(thickness as f64);
+
+    for y in 0..rect.height {
+        for x in 0..rect.width {
+            let along_x = if flip_x { width - 1.0 - x as f64 } else { x as f64 };
+            let along_y = if flip_y { height - 1.0 - y as f64 } else { y as f64 };
+
+            let on_shaft = {
+                let wanted = along_x * (height - 1.0).max(1.0) / (width - 1.0).max(1.0);
+                (along_y - wanted).abs() <= half
+            };
+            let in_head = along_x >= width - head && along_y >= height - head;
+
+            if on_shaft || in_head {
+                plane.data[(rect.top + y) * plane.stride + rect.left + x] = shade;
+            }
+        }
     }
 }
 
@@ -260,6 +301,108 @@ mod tests {
         apply(&mut plane, rect, &OverlayKind::Blur { strength: 10 });
 
         assert!(data.iter().all(|v| *v == 200), "a flat area changed value");
+    }
+
+    #[test]
+    fn a_box_paints_its_rectangle_flat_and_nothing_else() {
+        let (width, height) = (32, 32);
+        let original = checkerboard(width, height);
+        let mut data = original.clone();
+        let rect = Rect { left: 8, top: 8, width: 10, height: 6 };
+
+        let mut plane = Plane { data: &mut data, stride: width, width, height };
+        apply(&mut plane, rect, &OverlayKind::Box { shade: 16 });
+
+        for y in rect.top..rect.top + rect.height {
+            for x in rect.left..rect.left + rect.width {
+                assert_eq!(data[y * width + x], 16, "pixel {x},{y} was not filled");
+            }
+        }
+        assert_eq!(data[0], original[0], "a pixel outside the box changed");
+        assert_eq!(data[width * 31 + 31], original[width * 31 + 31]);
+    }
+
+    #[test]
+    fn a_box_stays_inside_a_padded_plane() {
+        let (width, height, stride) = (16, 16, 24);
+        let mut data = vec![9u8; stride * height];
+        let rect = Rect { left: 2, top: 2, width: 12, height: 12 };
+
+        let mut plane = Plane { data: &mut data, stride, width, height };
+        apply(&mut plane, rect, &OverlayKind::Box { shade: 100 });
+
+        for y in 0..height {
+            for x in width..stride {
+                assert_eq!(data[y * stride + x], 9, "padding at {x},{y} was filled");
+            }
+        }
+    }
+
+    #[test]
+    fn an_arrow_marks_both_of_its_ends() {
+        let (width, height) = (48, 48);
+        let mut data = vec![0u8; width * height];
+        let rect = Rect { left: 0, top: 0, width, height };
+
+        let mut plane = Plane { data: &mut data, stride: width, width, height };
+        apply(
+            &mut plane,
+            rect,
+            &OverlayKind::Arrow { shade: 255, thickness: 3, towards: Corner::BottomRight },
+        );
+
+        assert_eq!(data[0], 255, "the tail corner is empty");
+        assert_eq!(data[width * (height - 1) + width - 1], 255, "the head is empty");
+        assert_eq!(data[width - 1], 0, "the opposite corner should stay clear");
+    }
+
+    #[test]
+    fn an_arrow_points_where_it_is_told() {
+        let (width, height) = (48, 48);
+        let corners = [
+            (Corner::BottomRight, width * (height - 1) + width - 1),
+            (Corner::BottomLeft, width * (height - 1)),
+            (Corner::TopRight, width - 1),
+            (Corner::TopLeft, 0),
+        ];
+
+        for (towards, head) in corners {
+            let mut data = vec![0u8; width * height];
+            let mut plane = Plane { data: &mut data, stride: width, width, height };
+            apply(
+                &mut plane,
+                Rect { left: 0, top: 0, width, height },
+                &OverlayKind::Arrow { shade: 255, thickness: 3, towards },
+            );
+            assert_eq!(data[head], 255, "{towards:?} did not reach its corner");
+        }
+    }
+
+    #[test]
+    fn an_arrow_never_writes_outside_its_rectangle() {
+        let (width, height) = (40, 40);
+        let original = vec![5u8; width * height];
+        let mut data = original.clone();
+        let rect = Rect { left: 10, top: 10, width: 20, height: 20 };
+
+        let mut plane = Plane { data: &mut data, stride: width, width, height };
+        apply(
+            &mut plane,
+            rect,
+            &OverlayKind::Arrow { shade: 200, thickness: 5, towards: Corner::TopLeft },
+        );
+
+        for y in 0..height {
+            for x in 0..width {
+                let inside = x >= rect.left
+                    && x < rect.left + rect.width
+                    && y >= rect.top
+                    && y < rect.top + rect.height;
+                if !inside {
+                    assert_eq!(data[y * width + x], 5, "pixel {x},{y} outside was written");
+                }
+            }
+        }
     }
 
     #[test]
