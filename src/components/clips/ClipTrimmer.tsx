@@ -377,7 +377,7 @@ export function ClipTrimmer({
         <div
           ref={frameRef}
           className="relative mx-auto w-full overflow-hidden rounded-lg bg-black border border-white/10"
-          style={{ aspectRatio: `${ratio}`, maxWidth: `calc(48vh * ${ratio})` }}
+          style={{ aspectRatio: `${ratio}`, maxWidth: `calc(56vh * ${ratio})` }}
         >
           <video
             ref={videoRef}

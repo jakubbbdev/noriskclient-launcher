@@ -569,11 +569,12 @@ function ClipPlayer({
         </span>
       }
       onClose={onClose}
-      width="xl"
+      width={trimming ? "full" : "xl"}
+      className={trimming ? "max-h-[96vh]" : undefined}
       closeOnClickOutside={!trimming}
       footer={footer}
     >
-      <div className="p-4">
+      <div className={trimming ? "p-3" : "p-4"}>
         {trimming ? (
           <ClipTrimmer
             src={src}
