@@ -854,3 +854,79 @@ mod tests {
         assert_eq!(span_100ns(480, 0), 480 * 10_000_000);
     }
 }
+
+pub fn pid_of_executable(executable: &str) -> Option<u32> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+
+    let wanted = executable.trim();
+    if wanted.is_empty() {
+        return None;
+    }
+
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+
+        let mut found = None;
+        if Process32FirstW(snapshot, &mut entry).is_ok() {
+            loop {
+                let end = entry
+                    .szExeFile
+                    .iter()
+                    .position(|c| *c == 0)
+                    .unwrap_or(entry.szExeFile.len());
+                let name = String::from_utf16_lossy(&entry.szExeFile[..end]);
+                if name.eq_ignore_ascii_case(wanted) {
+                    found = Some(entry.th32ProcessID);
+                    break;
+                }
+                if Process32NextW(snapshot, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+
+        let _ = CloseHandle(snapshot);
+        found
+    }
+}
+
+#[cfg(test)]
+mod process_tests {
+    use super::*;
+
+    #[test]
+    fn this_test_binary_can_find_itself_by_name() {
+        let own = std::env::current_exe().unwrap();
+        let name = own.file_name().unwrap().to_string_lossy().to_string();
+
+        assert_eq!(
+            pid_of_executable(&name),
+            Some(std::process::id()),
+            "looking for {name} did not come back with our own pid",
+        );
+    }
+
+    #[test]
+    fn the_name_is_matched_without_regard_to_case() {
+        let own = std::env::current_exe().unwrap();
+        let name = own.file_name().unwrap().to_string_lossy().to_uppercase();
+
+        assert_eq!(pid_of_executable(&name), Some(std::process::id()));
+    }
+
+    #[test]
+    fn nothing_and_nonsense_come_back_empty() {
+        assert_eq!(pid_of_executable(""), None);
+        assert_eq!(pid_of_executable("   "), None);
+        assert_eq!(pid_of_executable("definitely-not-running-42.exe"), None);
+    }
+}
