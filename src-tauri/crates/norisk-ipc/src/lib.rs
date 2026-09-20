@@ -50,6 +50,8 @@ pub struct CaptureConfig {
     pub microphone_device_id: Option<String>,
     #[serde(default = "default_volume")]
     pub microphone_volume: u32,
+    #[serde(default)]
+    pub microphone_denoise: bool,
     pub output_dir: PathBuf,
 }
 
@@ -92,6 +94,7 @@ impl Default for CaptureConfig {
             capture_microphone: false,
             microphone_device_id: None,
             microphone_volume: default_volume(),
+            microphone_denoise: false,
             output_dir: PathBuf::new(),
         }
     }

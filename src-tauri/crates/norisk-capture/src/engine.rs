@@ -722,6 +722,7 @@ impl Engine {
                 self.config.buffer_seconds as f32,
                 self.audio_plan(target.pid),
                 Arc::clone(&epoch_for_audio),
+                self.config.microphone_denoise,
             ) {
                 Ok(pipeline) => Some(pipeline),
                 Err(e) => {
@@ -1523,6 +1524,7 @@ fn start_audio(
     window_seconds: f32,
     plan: AudioPlan,
     epoch: Arc<AtomicI64>,
+    denoise_microphone: bool,
 ) -> Result<AudioPipeline> {
     use crate::audio::{LoopbackCapture, Mixer, Track};
 
@@ -1555,6 +1557,14 @@ fn start_audio(
         .filter(|source| source.track != Track::Microphone)
         .count();
 
+    let microphone_format = plan
+        .sources
+        .iter()
+        .find(|source| source.track == Track::Microphone)
+        .and_then(|source| crate::audio::wasapi::probe_source(&source.source).ok())
+        .map(|(_, format)| format)
+        .unwrap_or(format);
+
     let mut stems = Vec::new();
     let mut game_stem: Option<(Option<Mixer>, AudioSink)> = None;
     let mut microphone_stem: Option<AudioSink> = None;
@@ -1576,14 +1586,6 @@ fn start_audio(
         };
         stems.push(stem);
         game_stem = Some((mixer, sink));
-
-        let microphone_format = plan
-            .sources
-            .iter()
-            .find(|source| source.track == Track::Microphone)
-            .and_then(|source| crate::audio::wasapi::probe_source(&source.source).ok())
-            .map(|(_, format)| format)
-            .unwrap_or(format);
 
         let (stem, sink) = open_stem(crate::audio::MIC_LABEL, window_seconds, microphone_format)?;
         stems.push(stem);
@@ -1646,17 +1648,37 @@ fn start_audio(
         let epoch = Arc::clone(&epoch);
         let mut scratch = Vec::new();
 
+        let mut denoiser = (denoise_microphone && track == Track::Microphone)
+            .then(|| crate::audio::denoise::Denoiser::new(microphone_format.channels));
+        let mut cleaned: Vec<f32> = Vec::new();
+
         captures.push(LoopbackCapture::start_from(
             source,
             move |samples: &[f32], timestamp: i64| {
                 let relative = rebase(&epoch, timestamp);
+                let samples = match denoiser.as_mut() {
+                    Some(denoiser) => {
+                        cleaned.clear();
+                        cleaned.extend_from_slice(samples);
+                        denoiser.process(&mut cleaned);
+                        cleaned.as_slice()
+                    }
+                    None => samples,
+                };
                 for destination in &destinations {
                     destination.accept(samples, relative, &mut scratch);
                 }
             },
         )?);
 
-        log::info!("Recording {track:?} audio at {:.0}%", gain * 100.0);
+        if denoise_microphone && track == Track::Microphone {
+            log::info!(
+                "Recording {track:?} audio at {:.0}% with noise suppression",
+                gain * 100.0
+            );
+        } else {
+            log::info!("Recording {track:?} audio at {:.0}%", gain * 100.0);
+        }
     }
 
     log::info!(
@@ -1815,6 +1837,7 @@ fn needs_restart(current: &CaptureConfig, next: &CaptureConfig) -> bool {
         || current.capture_microphone != next.capture_microphone
         || current.microphone_device_id != next.microphone_device_id
         || current.microphone_volume != next.microphone_volume
+        || current.microphone_denoise != next.microphone_denoise
 }
 
 fn free_path(dir: &std::path::Path, stamp: &str, reason: &str) -> std::path::PathBuf {
@@ -1915,6 +1938,24 @@ mod tests {
 
         let mut next = base();
         next.codec = norisk_ipc::ClipCodec::Av1;
+        assert!(needs_restart(&base(), &next));
+    }
+
+    #[test]
+    fn every_audio_setting_the_pipeline_reads_once_forces_a_restart() {
+        let mut next = base();
+        next.microphone_denoise = !base().microphone_denoise;
+        assert!(
+            needs_restart(&base(), &next),
+            "noise suppression is decided when the pipeline starts, so it has to restart",
+        );
+
+        let mut next = base();
+        next.capture_microphone = !base().capture_microphone;
+        assert!(needs_restart(&base(), &next));
+
+        let mut next = base();
+        next.microphone_device_id = Some("another".into());
         assert!(needs_restart(&base(), &next));
     }
 
