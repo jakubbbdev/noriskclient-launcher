@@ -2271,6 +2271,8 @@
   "settings.clips.audio.microphone": "मेरी आवाज़ रिकॉर्ड करें",
   "settings.clips.audio.microphone.description": "जो कुछ और रिकॉर्ड हो रहा है, उसके साथ आपका माइक्रोफ़ोन भी क्लिप में जोड़ता है।",
   "settings.clips.audio.microphone.device": "माइक्रोफ़ोन",
+  "settings.clips.audio.microphone_denoise": "शोर दमन",
+  "settings.clips.audio.microphone_denoise.description": "आपकी आवाज़ से पंखे, कीबोर्ड और पृष्ठभूमि का शोर हटाता है। आपके ही कंप्यूटर पर चलता है और लगभग कुछ नहीं लेता।",
   "settings.clips.audio.microphone_volume": "आवाज़ का वॉल्यूम",
   "settings.clips.storage.limit": "डिस्क लिमिट",
   "settings.clips.storage.limit_description": "जैसे ही फ़ोल्डर {{gb}} GB से ज़्यादा हो जाता है, सबसे पुरानी क्लिप्स डिलीट हो जाती हैं।",

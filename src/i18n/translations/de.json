@@ -2266,6 +2266,8 @@
   "settings.clips.audio.microphone": "Meine Stimme aufnehmen",
   "settings.clips.audio.microphone.description": "Nimmt dein Mikrofon zusätzlich zu allem anderen mit auf.",
   "settings.clips.audio.microphone.device": "Mikrofon",
+  "settings.clips.audio.microphone_denoise": "Rauschunterdrückung",
+  "settings.clips.audio.microphone_denoise.description": "Filtert Lüfter, Tastatur und Hintergrundrauschen aus deiner Stimme. Läuft auf deinem Rechner und kostet kaum Leistung.",
   "settings.clips.audio.microphone_volume": "Stimmen-Lautstärke",
   "settings.clips.storage.limit": "Speicherplatz",
   "settings.clips.storage.limit_description": "Älteste Clips werden gelöscht, sobald der Ordner {{gb}} GB überschreitet.",

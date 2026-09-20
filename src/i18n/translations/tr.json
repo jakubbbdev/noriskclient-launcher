@@ -2256,6 +2256,8 @@
   "settings.clips.audio.microphone": "Sesimi kaydet",
   "settings.clips.audio.microphone.description": "Mikrofonunu, kaydedilen diğer her şeyin üzerine ekler.",
   "settings.clips.audio.microphone.device": "Mikrofon",
+  "settings.clips.audio.microphone_denoise": "Gürültü engelleme",
+  "settings.clips.audio.microphone_denoise.description": "Sesinden fanları, klavyeyi ve arka plan uğultusunu süzer. Kendi bilgisayarında çalışır ve neredeyse hiçbir şeye mal olmaz.",
   "settings.clips.audio.microphone_volume": "Ses seviyesi (mikrofon)",
   "settings.clips.storage.limit": "Disk sınırı",
   "settings.clips.storage.limit_description": "Klasör {{gb}} GB'ı geçtiğinde en eski klipler silinir.",

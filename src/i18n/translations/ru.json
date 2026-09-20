@@ -2258,6 +2258,8 @@
   "settings.clips.audio.microphone": "Записывать мой голос",
   "settings.clips.audio.microphone.description": "Добавляет твой микрофон в клип поверх всего остального, что записывается.",
   "settings.clips.audio.microphone.device": "Микрофон",
+  "settings.clips.audio.microphone_denoise": "Шумоподавление",
+  "settings.clips.audio.microphone_denoise.description": "Убирает из голоса вентиляторы, клавиатуру и фоновый шум. Работает на твоём компьютере и почти ничего не стоит.",
   "settings.clips.audio.microphone_volume": "Громкость голоса",
   "settings.clips.storage.limit": "Лимит диска",
   "settings.clips.storage.limit_description": "Самые старые клипы удаляются, как только папка превышает {{gb}} ГБ.",

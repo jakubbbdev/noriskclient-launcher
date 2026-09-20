@@ -2256,6 +2256,8 @@
   "settings.clips.audio.microphone": "Gravar minha voz",
   "settings.clips.audio.microphone.description": "Adiciona seu microfone ao clipe, além de tudo que já está sendo gravado.",
   "settings.clips.audio.microphone.device": "Microfone",
+  "settings.clips.audio.microphone_denoise": "Supressão de ruído",
+  "settings.clips.audio.microphone_denoise.description": "Filtra ventoinhas, teclado e ruído de fundo da sua voz. Roda no seu computador e custa quase nada.",
   "settings.clips.audio.microphone_volume": "Volume da voz",
   "settings.clips.storage.limit": "Limite de disco",
   "settings.clips.storage.limit_description": "Os clipes mais antigos são apagados assim que a pasta passa de {{gb}} GB.",

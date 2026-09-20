@@ -2286,6 +2286,8 @@
   "settings.clips.audio.microphone": "Record my voice",
   "settings.clips.audio.microphone.description": "Adds your microphone to the clip, on top of whatever else is being recorded.",
   "settings.clips.audio.microphone.device": "Microphone",
+  "settings.clips.audio.microphone_denoise": "Noise suppression",
+  "settings.clips.audio.microphone_denoise.description": "Filters fans, keyboard and background hiss out of your voice. Runs on your own machine and costs almost nothing.",
   "settings.clips.audio.microphone_volume": "Voice volume",
   "settings.clips.storage.limit": "Disk limit",
   "settings.clips.storage.limit_description": "Oldest clips are deleted once the folder passes {{gb}} GB.",
