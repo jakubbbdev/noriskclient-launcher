@@ -537,7 +537,23 @@ function ClipPlayer({
     [clip.path, t],
   );
 
-  const footer = trimming ? undefined : (
+  if (trimming) {
+    return (
+      <ClipTrimmer
+        src={src}
+        path={clip.path}
+        name={clip.name}
+        duration={duration}
+        busy={saving}
+        details={details}
+        onCancel={() => setTrimming(false)}
+        onSave={save}
+        t={t}
+      />
+    );
+  }
+
+  const footer = (
     <div className="flex items-center justify-end gap-3">
       <Button
         variant="secondary"
@@ -569,47 +585,32 @@ function ClipPlayer({
         </span>
       }
       onClose={onClose}
-      width={trimming ? "full" : "xl"}
-      className={trimming ? "max-h-[96vh]" : undefined}
-      closeOnClickOutside={!trimming}
+      width="xl"
       footer={footer}
     >
-      <div className={trimming ? "p-3" : "p-4"}>
-        {trimming ? (
-          <ClipTrimmer
+      <div className="p-4">
+        <div
+          className="mx-auto w-full max-h-[calc(90vh-14rem)] overflow-hidden rounded-lg border border-white/10 bg-black"
+          style={{
+            aspectRatio: `${ratio}`,
+            maxWidth: `calc((90vh - 14rem) * ${ratio})`,
+          }}
+        >
+          <video
             src={src}
-            path={clip.path}
-            duration={duration}
-            busy={saving}
-            details={details}
-            onCancel={() => setTrimming(false)}
-            onSave={save}
-            t={t}
-          />
-        ) : (
-          <div
-            className="mx-auto w-full max-h-[calc(90vh-14rem)] overflow-hidden rounded-lg border border-white/10 bg-black"
-            style={{
-              aspectRatio: `${ratio}`,
-              maxWidth: `calc((90vh - 14rem) * ${ratio})`,
+            controls
+            autoPlay
+            playsInline
+            onLoadedMetadata={(event) => {
+              const video = event.currentTarget;
+              setDuration(video.duration);
+              if (video.videoWidth > 0 && video.videoHeight > 0) {
+                setRatio(video.videoWidth / video.videoHeight);
+              }
             }}
-          >
-            <video
-              src={src}
-              controls
-              autoPlay
-              playsInline
-              onLoadedMetadata={(event) => {
-                const video = event.currentTarget;
-                setDuration(video.duration);
-                if (video.videoWidth > 0 && video.videoHeight > 0) {
-                  setRatio(video.videoWidth / video.videoHeight);
-                }
-              }}
-              className="block h-full w-full object-contain"
-            />
-          </div>
-        )}
+            className="block h-full w-full object-contain"
+          />
+        </div>
       </div>
     </Modal>
   );

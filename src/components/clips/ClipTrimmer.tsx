@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "@iconify/react";
 
 import { Button } from "../ui/buttons/Button";
@@ -9,6 +9,7 @@ import { RangeSlider } from "../ui/RangeSlider";
 import { useThemeStore } from "../../store/useThemeStore";
 import {
   exportVertical,
+  type ClipAudioTrack,
   type ClipCorner,
   type ClipDetails,
   type ClipOverlay,
@@ -37,6 +38,10 @@ const NUDGE = 0.1;
 const MIN_BOX = 0.05;
 
 const DEFAULT_BLUR = 12;
+
+const TICK_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300];
+
+const MAX_TICKS = 12;
 
 type NewOverlay =
   | { kind: "blur"; strength: number }
@@ -74,6 +79,13 @@ const OVERLAY_NAME: Record<ClipOverlay["kind"], string> = {
   text: "clips.editor.overlay.name_text",
 };
 
+const OVERLAY_ICON: Record<ClipOverlay["kind"], string> = {
+  blur: "solar:magic-stick-bold",
+  box: "solar:stop-bold",
+  arrow: "solar:arrow-right-up-bold",
+  text: "solar:text-bold",
+};
+
 const OVERLAY_COLOUR_MODAL = "clip-overlay-colour";
 
 const SWATCHES: number[] = [0xffffff, 0x000000, 0xff3b30, 0xffcc00, 0x34c759, 0x0a84ff];
@@ -96,6 +108,14 @@ const SHAPES: { choice: ShapeChoice; ratio: number | null; label: string }[] = [
   { choice: "vertical", ratio: 9 / 16, label: "clips.editor.shape.vertical" },
   { choice: "square", ratio: 1, label: "clips.editor.shape.square" },
   { choice: "wide", ratio: 21 / 9, label: "clips.editor.shape.wide" },
+];
+
+type Panel = "tools" | "audio" | "format";
+
+const PANELS: { id: Panel; icon: string; label: string }[] = [
+  { id: "tools", icon: "solar:widget-bold", label: "clips.editor.tools" },
+  { id: "audio", icon: "solar:soundwave-bold", label: "clips.editor.audio" },
+  { id: "format", icon: "solar:smartphone-bold", label: "clips.editor.shape.label" },
 ];
 
 interface BoxDrag {
@@ -123,20 +143,24 @@ type ExportStage =
   | { kind: "done" }
   | { kind: "failed"; why: string };
 
+type Translate = (key: string, options?: Record<string, unknown>) => string;
+
 interface Props {
   src: string;
   path: string;
+  name: string;
   duration: number;
   busy: boolean;
   details: ClipDetails | null;
   onCancel: () => void;
   onSave: (startSeconds: number, endSeconds: number, levels: TrackLevel[]) => void;
-  t: (key: string, options?: Record<string, unknown>) => string;
+  t: Translate;
 }
 
 export function ClipTrimmer({
   src,
   path,
+  name,
   duration,
   busy,
   details,
@@ -146,13 +170,13 @@ export function ClipTrimmer({
 }: Props) {
   const accentColor = useThemeStore((state) => state.accentColor);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const barRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
-  const trackRef = useRef<HTMLDivElement>(null);
+  const scaleRef = useRef<HTMLDivElement>(null);
 
   const [start, setStart] = useState(0);
   const [end, setEnd] = useState(0);
   const [dragging, setDragging] = useState<"start" | "end" | null>(null);
+  const [scrubbing, setScrubbing] = useState(false);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
 
@@ -160,6 +184,7 @@ export function ClipTrimmer({
   const [overlays, setOverlays] = useState<ClipOverlay[]>([]);
   const [chosen, setChosen] = useState<number | null>(null);
   const [shape, setShape] = useState<ShapeChoice>("original");
+  const [panel, setPanel] = useState<Panel>("tools");
   const [boxDrag, setBoxDrag] = useState<BoxDrag | null>(null);
   const [barDrag, setBarDrag] = useState<BarDrag | null>(null);
   const [stage, setStage] = useState<ExportStage>({ kind: "idle" });
@@ -199,6 +224,14 @@ export function ClipTrimmer({
     [duration],
   );
 
+  const ticks = useMemo(() => {
+    if (duration <= 0) return [];
+    const step = TICK_STEPS.find((entry) => duration / entry <= MAX_TICKS) ?? 600;
+    const out: number[] = [];
+    for (let at = 0; at <= duration + 0.001; at += step) out.push(at);
+    return out;
+  }, [duration]);
+
   const seek = useCallback(
     (seconds: number) => {
       const video = videoRef.current;
@@ -209,13 +242,34 @@ export function ClipTrimmer({
 
   const secondsAt = useCallback(
     (clientX: number) => {
-      const bar = barRef.current;
-      if (!bar || duration <= 0) return 0;
-      const rect = bar.getBoundingClientRect();
+      const scale = scaleRef.current;
+      if (!scale || duration <= 0) return 0;
+      const rect = scale.getBoundingClientRect();
       return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration;
     },
     [duration],
   );
+
+  const scrubTo = useCallback(
+    (clientX: number) => {
+      const seconds = secondsAt(clientX);
+      seek(seconds);
+      setPlayhead(seconds);
+    },
+    [secondsAt, seek],
+  );
+
+  useEffect(() => {
+    if (!scrubbing) return;
+    const move = (event: PointerEvent) => scrubTo(event.clientX);
+    const up = () => setScrubbing(false);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  }, [scrubbing, scrubTo]);
 
   const moveHandle = useCallback(
     (which: "start" | "end", seconds: number) => {
@@ -307,7 +361,7 @@ export function ClipTrimmer({
   useEffect(() => {
     if (!barDrag) return;
     const move = (event: PointerEvent) => {
-      const rect = trackRef.current?.getBoundingClientRect();
+      const rect = scaleRef.current?.getBoundingClientRect();
       if (!rect || rect.width === 0 || duration <= 0) return;
       const by = ((event.clientX - barDrag.fromX) / rect.width) * duration;
       if (barDrag.mode === "move") {
@@ -395,9 +449,9 @@ export function ClipTrimmer({
       video.pause();
       return;
     }
-    video.currentTime = start;
+    if (video.currentTime < start || video.currentTime >= end - 0.05) video.currentTime = start;
     void video.play().catch(() => {});
-  }, [start]);
+  }, [end, start]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -418,122 +472,483 @@ export function ClipTrimmer({
     };
   }, [end]);
 
+  const shapeLabel = SHAPES.find((entry) => entry.choice === shape)?.label ?? SHAPES[0].label;
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-start gap-3">
-        <div className="flex shrink-0 flex-col items-center gap-2 rounded-lg bg-black/20 border border-white/10 px-2 py-2">
-          <span className="font-smallcaps text-[0.65rem] uppercase tracking-wider text-white/40">
-            {t("clips.editor.tools")}
-          </span>
-          {TOOLS.map((tool) => (
-            <ClipIconButton
-              key={tool.seed.kind}
-              icon={tool.icon}
-              label={t(tool.label)}
-              onClick={() => addOverlay(tool.seed)}
-              disabled={busy}
-            />
-          ))}
+    <div className="fixed inset-0 z-[1000] flex flex-col bg-black/95 backdrop-blur-md-anyos">
+      <header className="relative flex shrink-0 items-center gap-3 border-b border-white/10 bg-black/50 px-4 py-2.5">
+        <Icon
+          icon="solar:videocamera-record-bold"
+          className="h-5 w-5 shrink-0"
+          style={{ color: accentColor.value }}
+        />
+        <span
+          title={name}
+          className="max-w-[20rem] truncate font-minecraft text-base normal-case text-white"
+        >
+          {name}
+        </span>
+
+        <StateBadge stage={stage} percent={exportPercent} color={accentColor.value} t={t} />
+
+        <span className="rounded border border-white/10 bg-black/40 px-2 py-1 font-smallcaps text-xs uppercase tracking-wider text-white/50">
+          {t("clips.editor.shape.label")}: {t(shapeLabel)}
+        </span>
+
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onCancel}
+            disabled={busy}
+            icon={<Icon icon="solar:close-circle-bold" className="w-4 h-4" />}
+          >
+            {t("clips.editor.exit")}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => onSave(start, end, levels)}
+            disabled={busy || kept < MIN_LENGTH}
+            icon={
+              <Icon
+                icon={busy ? "svg-spinners:ring-resize" : "solar:scissors-bold"}
+                className="w-4 h-4"
+              />
+            }
+          >
+            {t("clips.trim.save")}
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => void runExport()}
+            disabled={busy || shape === "original" || stage.kind === "running"}
+            icon={
+              <Icon
+                icon={stage.kind === "running" ? "svg-spinners:ring-resize" : "solar:smartphone-bold"}
+                className="w-4 h-4"
+              />
+            }
+          >
+            {stage.kind === "failed"
+              ? t("clips.editor.export.retry")
+              : t("clips.editor.export.action")}
+          </Button>
         </div>
 
-        <div
-          ref={frameRef}
-          className="relative mx-auto w-full overflow-hidden rounded-lg bg-black border border-white/10"
-          style={{ aspectRatio: `${ratio}`, maxWidth: `calc(56vh * ${ratio})` }}
-        >
-          <video
-            ref={videoRef}
-            src={src}
-            className="block h-full w-full object-contain"
-            onClick={preview}
-            onLoadedMetadata={(event) => {
-              const video = event.currentTarget;
-              if (video.videoWidth > 0 && video.videoHeight > 0) {
-                setRatio(video.videoWidth / video.videoHeight);
-              }
-            }}
-          />
+        {stage.kind === "running" && (
+          <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-white/10">
+            <span
+              className={cn(
+                "block h-full transition-[width] duration-200",
+                exportPercent === null && "w-1/3 animate-pulse",
+              )}
+              style={{
+                backgroundColor: accentColor.value,
+                width: exportPercent === null ? undefined : `${Math.max(2, exportPercent)}%`,
+              }}
+            />
+          </span>
+        )}
+      </header>
 
-          {!playing && (
+      <div className="flex min-h-0 flex-1">
+        <nav className="flex w-[4.5rem] shrink-0 flex-col gap-1 border-r border-white/10 bg-black/40 p-2">
+          {PANELS.map((entry) => (
             <button
+              key={entry.id}
               type="button"
-              onClick={preview}
-              aria-label={t("clips.trim.preview")}
-              className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-[2px] transition-colors hover:bg-black/40"
+              onClick={() => setPanel(entry.id)}
+              aria-pressed={panel === entry.id}
+              className={cn(
+                "flex flex-col items-center gap-1 rounded-lg border px-1 py-2 transition-colors",
+                panel === entry.id
+                  ? "text-white"
+                  : "border-transparent text-white/50 hover:bg-white/5 hover:text-white",
+              )}
+              style={
+                panel === entry.id
+                  ? { borderColor: accentColor.value, backgroundColor: `${accentColor.value}25` }
+                  : undefined
+              }
             >
-              <span
-                className="flex h-14 w-14 items-center justify-center rounded-full border border-white/20"
-                style={{ backgroundColor: `${accentColor.value}40` }}
-              >
-                <Icon icon="solar:play-bold" className="h-7 w-7 text-white" />
+              <Icon icon={entry.icon} className="h-5 w-5" />
+              <span className="font-smallcaps text-[0.6rem] uppercase tracking-wider">
+                {t(entry.label)}
               </span>
             </button>
-          )}
-
-          {guide && (
-            <div
-              className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 border-2"
-              style={{
-                width: `${guide.width * 100}%`,
-                height: `${guide.height * 100}%`,
-                borderColor: accentColor.value,
-                boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.55)",
-              }}
-            />
-          )}
-
-          {overlays.map((overlay, index) => (
-            <OverlayBox
-              key={index}
-              overlay={overlay}
-              active={chosen === index}
-              color={accentColor.value}
-              label={t(OVERLAY_NAME[overlay.kind], { index: index + 1 })}
-              onPick={() => setChosen(index)}
-              onGrab={(mode, event) => {
-                setChosen(index);
-                setBoxDrag({
-                  index,
-                  mode,
-                  fromX: event.clientX,
-                  fromY: event.clientY,
-                  left: overlay.left,
-                  top: overlay.top,
-                  width: overlay.width,
-                  height: overlay.height,
-                });
-              }}
-            />
           ))}
-        </div>
+        </nav>
+
+        <aside className="flex w-60 shrink-0 flex-col gap-3 overflow-y-auto border-r border-white/10 bg-black/30 p-3">
+          {panel === "tools" && (
+            <>
+              <PanelTitle>{t("clips.editor.tools")}</PanelTitle>
+              <div className="flex flex-col gap-1.5">
+                {TOOLS.map((tool) => (
+                  <button
+                    key={tool.seed.kind}
+                    type="button"
+                    onClick={() => addOverlay(tool.seed)}
+                    disabled={busy}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 text-left font-minecraft text-sm text-white/80 transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white",
+                      busy && "cursor-not-allowed opacity-40",
+                    )}
+                  >
+                    <Icon icon={tool.icon} className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">{t(tool.label)}</span>
+                    <Icon icon="solar:add-circle-bold" className="h-4 w-4 shrink-0 text-white/30" />
+                  </button>
+                ))}
+              </div>
+              <p className="font-minecraft text-xs leading-relaxed text-white/50">
+                {t("clips.editor.tools.hint")}
+              </p>
+            </>
+          )}
+
+          {panel === "audio" && (
+            <>
+              <PanelTitle>{t("clips.editor.audio")}</PanelTitle>
+              {adjustable.length === 0 ? (
+                <p className="font-minecraft text-xs leading-relaxed text-white/50">
+                  {t("clips.editor.audio.none")}
+                </p>
+              ) : (
+                <>
+                  {adjustable.map((track) => (
+                    <TrackLevelControl
+                      key={track.stream}
+                      track={track}
+                      name={trackName(track.label, t)}
+                      volume={volumes[track.stream] ?? 100}
+                      onChange={(volume) =>
+                        setVolumes((current) => ({ ...current, [track.stream]: volume }))
+                      }
+                      disabled={busy}
+                      t={t}
+                    />
+                  ))}
+                  <p className="font-minecraft text-xs leading-relaxed text-white/50">
+                    {previewState === "live"
+                      ? t("clips.trim.levels.live")
+                      : previewState === "loading"
+                        ? t("clips.trim.levels.preparing")
+                        : rebalanced
+                          ? t("clips.trim.levels.rebuilt")
+                          : t("clips.trim.levels.untouched")}
+                  </p>
+                </>
+              )}
+              <p className="font-minecraft text-xs leading-relaxed text-white/40">
+                {t("clips.editor.audio.locked")}
+              </p>
+            </>
+          )}
+
+          {panel === "format" && (
+            <>
+              <PanelTitle>{t("clips.editor.shape.label")}</PanelTitle>
+              <div className="grid grid-cols-2 gap-1.5">
+                {SHAPES.map((entry) => (
+                  <button
+                    key={entry.choice}
+                    type="button"
+                    onClick={() => setShape(entry.choice)}
+                    disabled={busy}
+                    className={cn(
+                      "rounded-lg border px-2 py-2 font-minecraft text-xs transition-colors",
+                      shape === entry.choice
+                        ? "text-white"
+                        : "border-white/10 bg-black/40 text-white/60 hover:text-white",
+                      busy && "cursor-not-allowed opacity-40",
+                    )}
+                    style={
+                      shape === entry.choice
+                        ? { borderColor: accentColor.value, backgroundColor: `${accentColor.value}30` }
+                        : undefined
+                    }
+                  >
+                    {t(entry.label)}
+                  </button>
+                ))}
+              </div>
+              {shape === "original" && (
+                <p className="font-minecraft text-xs leading-relaxed text-white/50">
+                  {t("clips.editor.export.needs_shape")}
+                </p>
+              )}
+            </>
+          )}
+        </aside>
+
+        <main className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden p-4">
+          <div
+            ref={frameRef}
+            className="relative w-full overflow-hidden rounded-lg border border-white/10 bg-black"
+            style={{ aspectRatio: `${ratio}`, maxWidth: `calc(44vh * ${ratio})` }}
+          >
+            <video
+              ref={videoRef}
+              src={src}
+              className="block h-full w-full object-contain"
+              onClick={preview}
+              onLoadedMetadata={(event) => {
+                const video = event.currentTarget;
+                if (video.videoWidth > 0 && video.videoHeight > 0) {
+                  setRatio(video.videoWidth / video.videoHeight);
+                }
+              }}
+            />
+
+            {!playing && (
+              <button
+                type="button"
+                onClick={preview}
+                aria-label={t("clips.trim.preview")}
+                className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-[2px] transition-colors hover:bg-black/40"
+              >
+                <span
+                  className="flex h-14 w-14 items-center justify-center rounded-full border border-white/20"
+                  style={{ backgroundColor: `${accentColor.value}40` }}
+                >
+                  <Icon icon="solar:play-bold" className="h-7 w-7 text-white" />
+                </span>
+              </button>
+            )}
+
+            {guide && (
+              <div
+                className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 border-2"
+                style={{
+                  width: `${guide.width * 100}%`,
+                  height: `${guide.height * 100}%`,
+                  borderColor: accentColor.value,
+                  boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.55)",
+                }}
+              />
+            )}
+
+            {overlays.map((overlay, index) => (
+              <OverlayBox
+                key={index}
+                overlay={overlay}
+                active={chosen === index}
+                visible={playhead >= overlay.startSeconds && playhead <= overlay.endSeconds}
+                color={accentColor.value}
+                label={t(OVERLAY_NAME[overlay.kind], { index: index + 1 })}
+                onPick={() => setChosen(index)}
+                onGrab={(mode, event) => {
+                  setChosen(index);
+                  setBoxDrag({
+                    index,
+                    mode,
+                    fromX: event.clientX,
+                    fromY: event.clientY,
+                    left: overlay.left,
+                    top: overlay.top,
+                    width: overlay.width,
+                    height: overlay.height,
+                  });
+                }}
+              />
+            ))}
+          </div>
+        </main>
+
+        <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/10 bg-black/30 p-3">
+          <PanelTitle>{t("clips.editor.inspector")}</PanelTitle>
+
+          {picked === null || chosen === null ? (
+            <p className="font-minecraft text-xs leading-relaxed text-white/50">
+              {t("clips.editor.inspector.empty")}
+            </p>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2">
+                <Icon
+                  icon={OVERLAY_ICON[picked.kind]}
+                  className="h-4 w-4 shrink-0"
+                  style={{ color: overlayTint(picked, accentColor.value) }}
+                />
+                <span className="min-w-0 flex-1 truncate font-minecraft text-sm text-white">
+                  {t(OVERLAY_NAME[picked.kind], { index: chosen + 1 })}
+                </span>
+                <ClipIconButton
+                  icon="solar:trash-bin-trash-bold"
+                  label={t("clips.editor.overlay.remove")}
+                  tone="danger"
+                  tooltipPosition="bottom"
+                  onClick={() => dropOverlay(chosen)}
+                  disabled={busy}
+                />
+              </div>
+
+              <p className="font-minecraft text-xs text-white/50">
+                {t("clips.editor.overlay.window", {
+                  from: formatTime(picked.startSeconds),
+                  to: formatTime(picked.endSeconds),
+                })}
+              </p>
+
+              {picked.kind === "blur" && (
+                <PropSlider
+                  label={t("clips.editor.overlay.strength")}
+                  value={picked.strength}
+                  min={1}
+                  max={64}
+                  disabled={busy}
+                  onChange={(strength) => editOverlay(chosen, { strength })}
+                />
+              )}
+
+              {picked.kind === "box" && (
+                <ShadeChoice
+                  label={t("clips.editor.overlay.colour")}
+                  value={picked.colour}
+                  disabled={busy}
+                  onChange={(colour) => editOverlay(chosen, { colour })}
+                  t={t}
+                />
+              )}
+
+              {picked.kind === "arrow" && (
+                <>
+                  <ShadeChoice
+                    label={t("clips.editor.overlay.colour")}
+                    value={picked.colour}
+                    disabled={busy}
+                    onChange={(colour) => editOverlay(chosen, { colour })}
+                    t={t}
+                  />
+                  <PropSlider
+                    label={t("clips.editor.overlay.thickness")}
+                    value={picked.thickness}
+                    min={1}
+                    max={32}
+                    disabled={busy}
+                    onChange={(thickness) => editOverlay(chosen, { thickness })}
+                  />
+                  <CornerChoice
+                    label={t("clips.editor.overlay.towards")}
+                    value={picked.towards}
+                    color={accentColor.value}
+                    disabled={busy}
+                    onChange={(towards) => editOverlay(chosen, { towards })}
+                    t={t}
+                  />
+                </>
+              )}
+
+              {picked.kind === "text" && (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <span className="font-minecraft text-sm text-white/80">
+                      {t("clips.editor.overlay.text")}
+                    </span>
+                    <Input
+                      size="sm"
+                      value={picked.content}
+                      disabled={busy}
+                      placeholder={t("clips.editor.overlay.text_placeholder")}
+                      aria-label={t("clips.editor.overlay.text")}
+                      onChange={(event) => editOverlay(chosen, { content: event.target.value })}
+                    />
+                  </div>
+                  <PropSlider
+                    label={t("clips.editor.overlay.size")}
+                    value={picked.size}
+                    min={8}
+                    max={240}
+                    disabled={busy}
+                    onChange={(size) => editOverlay(chosen, { size })}
+                  />
+                  <ShadeChoice
+                    label={t("clips.editor.overlay.colour")}
+                    value={picked.colour}
+                    disabled={busy}
+                    onChange={(colour) => editOverlay(chosen, { colour })}
+                    t={t}
+                  />
+                  {picked.content.trim() === "" && (
+                    <p className="flex items-start gap-2 font-minecraft text-xs leading-relaxed text-amber-300">
+                      <Icon icon="solar:danger-triangle-bold" className="mt-0.5 h-4 w-4 shrink-0" />
+                      {t("clips.editor.overlay.text_empty")}
+                    </p>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </aside>
       </div>
 
-      <div className="flex items-end justify-center gap-8">
-        <Readout label={t("clips.trim.from")} value={formatTime(start)} />
-        <div className="flex flex-col items-center">
-          <span className="font-minecraft text-3xl text-white">
-            {kept.toFixed(1)}
-            <span className="ml-1 text-lg text-white/50">s</span>
-          </span>
-          <span className="font-smallcaps text-xs uppercase tracking-wider text-white/50">
-            {t("clips.trim.kept_label")}
-          </span>
-        </div>
-        <Readout label={t("clips.trim.to")} value={formatTime(end)} />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <div
-          ref={barRef}
-          className="relative select-none overflow-hidden rounded-lg bg-black/40 border border-white/10"
-          onPointerDown={(event) => {
-            const seconds = secondsAt(event.clientX);
-            seek(seconds);
-            setPlayhead(seconds);
+      <div className="flex shrink-0 items-center gap-2 border-t border-white/10 bg-black/40 px-3 py-2">
+        <ClipIconButton
+          icon="solar:restart-bold"
+          label={t("clips.editor.transport.to_start")}
+          tooltipPosition="top"
+          onClick={() => {
+            seek(start);
+            setPlayhead(start);
           }}
-          role="presentation"
-        >
-          <div className="relative h-16">
+        />
+        <ClipIconButton
+          icon={playing ? "solar:pause-bold" : "solar:play-bold"}
+          label={playing ? t("clips.editor.transport.pause") : t("clips.trim.preview")}
+          tooltipPosition="top"
+          onClick={preview}
+        />
+
+        <span className="ml-1 font-minecraft text-sm tabular-nums text-white">
+          {formatTime(playhead)}
+          <span className="text-white/40"> / {formatTime(duration)}</span>
+        </span>
+
+        <div className="ml-auto flex items-center gap-5">
+          <Readout label={t("clips.trim.from")} value={formatTime(start)} />
+          <Readout label={t("clips.trim.kept_label")} value={`${kept.toFixed(1)} s`} strong />
+          <Readout label={t("clips.trim.to")} value={formatTime(end)} />
+        </div>
+      </div>
+
+      <div className="max-h-[38vh] shrink-0 overflow-y-auto border-t border-white/10 bg-black/50 px-3 py-2">
+        <div className="relative flex select-none flex-col gap-1">
+          <div className="flex">
+            <div className="w-44 shrink-0" />
+            <div
+              ref={scaleRef}
+              role="presentation"
+              onPointerDown={(event) => {
+                scrubTo(event.clientX);
+                setScrubbing(true);
+              }}
+              className="relative h-5 flex-1 cursor-ew-resize"
+            >
+              {ticks.map((at) => (
+                <span
+                  key={at}
+                  className="absolute bottom-0 top-0 border-l border-white/20 pl-1 font-minecraft text-[0.6rem] leading-5 text-white/40"
+                  style={{ left: `${percent(at)}%` }}
+                >
+                  {formatTick(at)}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <Lane
+            icon="solar:videocamera-bold"
+            name={t("clips.editor.timeline.video")}
+            tint={accentColor.value}
+            height="h-14"
+            onScrub={(clientX) => {
+              scrubTo(clientX);
+              setScrubbing(true);
+            }}
+          >
             {filmstrip ? (
               <img
                 src={filmstrip}
@@ -546,337 +961,360 @@ export function ClipTrimmer({
                 <Icon icon="svg-spinners:ring-resize" className="h-4 w-4 text-white/40" />
               </div>
             )}
-          </div>
+          </Lane>
 
-          {drawn.map((track) => {
-            const volume = track.adjustable ? (volumes[track.stream] ?? 100) : 100;
-            return (
-              <div
-                key={track.stream}
-                className="relative h-12 border-t border-white/10"
-                style={{ color: accentColor.light }}
-              >
-                <Waveform peaks={track.peaks} gain={volume / 100} muted={volume === 0} />
-                <span className="pointer-events-none absolute left-2 top-1.5 font-smallcaps text-xs uppercase tracking-wider text-white/50">
-                  {trackName(track.label, t)}
-                </span>
-              </div>
-            );
-          })}
-
-          <div
-            className="pointer-events-none absolute inset-y-0 left-0 bg-black/70"
-            style={{ width: `${percent(start)}%` }}
-          />
-          <div
-            className="pointer-events-none absolute inset-y-0 right-0 bg-black/70"
-            style={{ width: `${100 - percent(end)}%` }}
-          />
-
-          <div
-            className="pointer-events-none absolute inset-y-0 border-x-2"
-            style={{
-              left: `${percent(start)}%`,
-              width: `${percent(kept)}%`,
-              borderColor: accentColor.value,
-            }}
-          />
-
-          <div
-            className="pointer-events-none absolute inset-y-0 w-px bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]"
-            style={{ left: `${percent(playhead)}%` }}
-          />
-
-          <Handle
-            left={percent(start)}
-            active={dragging === "start"}
-            time={formatTime(start)}
-            label={t("clips.trim.handle_start")}
-            color={accentColor.value}
-            onGrab={() => setDragging("start")}
-            onNudge={(by) => moveHandle("start", start + by)}
-          />
-          <Handle
-            left={percent(end)}
-            active={dragging === "end"}
-            time={formatTime(end)}
-            label={t("clips.trim.handle_end")}
-            color={accentColor.value}
-            onGrab={() => setDragging("end")}
-            onNudge={(by) => moveHandle("end", end + by)}
-          />
-        </div>
-
-        {overlays.length > 0 && (
-          <div ref={trackRef} className="flex select-none flex-col gap-1">
-            {overlays.map((overlay, index) => (
-              <OverlayBar
-                key={index}
-                overlay={overlay}
-                duration={duration}
-                active={chosen === index}
-                color={accentColor.value}
-                name={t(OVERLAY_NAME[overlay.kind], { index: index + 1 })}
-                onPick={() => setChosen(index)}
-                onGrab={(mode, event) => {
-                  setChosen(index);
-                  setBarDrag({
-                    index,
-                    mode,
-                    fromX: event.clientX,
-                    startSeconds: overlay.startSeconds,
-                    endSeconds: overlay.endSeconds,
-                  });
-                }}
-              />
-            ))}
-          </div>
-        )}
-
-        <p className="min-h-[1.25rem] font-minecraft text-xs text-white/50">
-          {overlays.length > 0 ? t("clips.editor.overlay.hint") : t("clips.trim.hint")}
-        </p>
-      </div>
-
-      {picked !== null && chosen !== null && (
-        <div className="flex flex-wrap items-center gap-4 rounded-lg bg-black/20 border border-white/10 px-4 py-3">
-          {picked.kind === "blur" && (
-            <PropSlider
-              label={t("clips.editor.overlay.strength")}
-              value={picked.strength}
-              min={1}
-              max={64}
-              disabled={busy}
-              onChange={(strength) => editOverlay(chosen, { strength })}
-            />
-          )}
-
-          {picked.kind === "box" && (
-            <ShadeChoice
-              label={t("clips.editor.overlay.colour")}
-              value={picked.colour}
-              disabled={busy}
-              onChange={(colour) => editOverlay(chosen, { colour })}
-              t={t}
-            />
-          )}
-
-          {picked.kind === "arrow" && (
-            <>
-              <ShadeChoice
-                label={t("clips.editor.overlay.colour")}
-                value={picked.colour}
-                disabled={busy}
-                onChange={(colour) => editOverlay(chosen, { colour })}
-                t={t}
-              />
-              <PropSlider
-                label={t("clips.editor.overlay.thickness")}
-                value={picked.thickness}
-                min={1}
-                max={32}
-                disabled={busy}
-                onChange={(thickness) => editOverlay(chosen, { thickness })}
-              />
-              <CornerChoice
-                label={t("clips.editor.overlay.towards")}
-                value={picked.towards}
-                color={accentColor.value}
-                disabled={busy}
-                onChange={(towards) => editOverlay(chosen, { towards })}
-                t={t}
-              />
-            </>
-          )}
-
-          {picked.kind === "text" && (
-            <>
-              <div className="flex min-w-[14rem] flex-1 items-center gap-3">
-                <span className="shrink-0 font-minecraft text-sm text-white/80">
-                  {t("clips.editor.overlay.text")}
-                </span>
-                <Input
-                  size="sm"
-                  value={picked.content}
-                  disabled={busy}
-                  placeholder={t("clips.editor.overlay.text_placeholder")}
-                  aria-label={t("clips.editor.overlay.text")}
-                  onChange={(event) => editOverlay(chosen, { content: event.target.value })}
-                />
-              </div>
-              <PropSlider
-                label={t("clips.editor.overlay.size")}
-                value={picked.size}
-                min={8}
-                max={240}
-                disabled={busy}
-                onChange={(size) => editOverlay(chosen, { size })}
-              />
-              <ShadeChoice
-                label={t("clips.editor.overlay.colour")}
-                value={picked.colour}
-                disabled={busy}
-                onChange={(colour) => editOverlay(chosen, { colour })}
-                t={t}
-              />
-              {picked.content.trim() === "" && (
-                <p className="flex w-full items-center gap-2 font-minecraft text-xs text-amber-300">
-                  <Icon icon="solar:danger-triangle-bold" className="h-4 w-4 shrink-0" />
-                  {t("clips.editor.overlay.text_empty")}
-                </p>
-              )}
-            </>
-          )}
-
-          <ClipIconButton
-            icon="solar:trash-bin-trash-bold"
-            label={t("clips.editor.overlay.remove")}
-            tone="danger"
-            tooltipPosition="top"
-            onClick={() => dropOverlay(chosen)}
-            disabled={busy}
-          />
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-3 rounded-lg bg-black/20 border border-white/10 px-4 py-3">
-        <span className="font-smallcaps text-xs uppercase tracking-wider text-white/50">
-          {t("clips.editor.shape.label")}
-        </span>
-        {SHAPES.map((entry) => (
-          <button
-            key={entry.choice}
-            type="button"
-            onClick={() => setShape(entry.choice)}
-            disabled={busy}
-            className={cn(
-              "rounded border px-2.5 py-1 font-minecraft text-xs transition-colors",
-              shape === entry.choice
-                ? "text-white"
-                : "border-white/10 bg-black/30 text-white/60 hover:text-white",
-            )}
-            style={
-              shape === entry.choice
-                ? { borderColor: accentColor.value, backgroundColor: `${accentColor.value}30` }
-                : undefined
-            }
-          >
-            {t(entry.label)}
-          </button>
-        ))}
-      </div>
-
-      {adjustable.length > 0 && (
-        <div className="flex flex-col gap-3 rounded-lg bg-black/20 border border-white/10 px-4 py-3">
-          {adjustable.map((track) => (
-            <TrackLevelControl
+          {drawn.map((track) => (
+            <AudioLane
               key={track.stream}
               track={track}
               name={trackName(track.label, t)}
-              volume={volumes[track.stream] ?? 100}
+              volume={track.adjustable ? (volumes[track.stream] ?? 100) : 100}
+              tone={accentColor.light}
+              disabled={busy}
               onChange={(volume) =>
                 setVolumes((current) => ({ ...current, [track.stream]: volume }))
               }
-              disabled={busy}
               t={t}
             />
           ))}
-          <p className="font-minecraft text-xs leading-relaxed text-white/50">
-            {previewState === "live"
-              ? t("clips.trim.levels.live")
-              : previewState === "loading"
-                ? t("clips.trim.levels.preparing")
-                : rebalanced
-                  ? t("clips.trim.levels.rebuilt")
-                  : t("clips.trim.levels.untouched")}
-          </p>
-        </div>
-      )}
 
-      <div className="flex items-center gap-3 border-t border-white/10 pt-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={<Icon icon={playing ? "solar:pause-bold" : "solar:play-bold"} className="w-4 h-4" />}
-          onClick={preview}
-        >
-          {t("clips.trim.preview")}
-        </Button>
+          {overlays.map((overlay, index) => (
+            <OverlayLane
+              key={index}
+              overlay={overlay}
+              duration={duration}
+              active={chosen === index}
+              accent={accentColor.value}
+              name={t(OVERLAY_NAME[overlay.kind], { index: index + 1 })}
+              onPick={() => setChosen(index)}
+              onGrab={(mode, event) => {
+                setChosen(index);
+                setBarDrag({
+                  index,
+                  mode,
+                  fromX: event.clientX,
+                  startSeconds: overlay.startSeconds,
+                  endSeconds: overlay.endSeconds,
+                });
+              }}
+            />
+          ))}
 
-        {stage.kind === "running" ? (
-          <div className="flex min-w-0 flex-1 flex-col gap-1.5 px-4">
-            <div className="h-1.5 overflow-hidden rounded-full bg-black/40 border border-white/10">
-              <div
-                className={cn(
-                  "h-full rounded-full transition-[width] duration-200",
-                  exportPercent === null && "w-1/3 animate-pulse",
-                )}
-                style={{
-                  backgroundColor: accentColor.value,
-                  width: exportPercent === null ? undefined : `${Math.max(2, exportPercent)}%`,
-                }}
-              />
-            </div>
-            <p className="font-minecraft text-xs text-white/60">
-              {exportPercent === null
-                ? t("clips.editor.export.starting")
-                : t("clips.editor.export.progress", { percent: exportPercent })}
-            </p>
+          <div className="pointer-events-none absolute inset-y-0 left-44 right-0">
+            <div
+              className="absolute inset-y-0 left-0 bg-black/70"
+              style={{ width: `${percent(start)}%` }}
+            />
+            <div
+              className="absolute inset-y-0 right-0 bg-black/70"
+              style={{ width: `${100 - percent(end)}%` }}
+            />
+            <div
+              className="absolute inset-y-0 border-x-2"
+              style={{
+                left: `${percent(start)}%`,
+                width: `${percent(kept)}%`,
+                borderColor: accentColor.value,
+              }}
+            />
+            <div
+              className="absolute inset-y-0 w-px bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]"
+              style={{ left: `${percent(playhead)}%` }}
+            />
+
+            <Handle
+              left={percent(start)}
+              active={dragging === "start"}
+              time={formatTime(start)}
+              label={t("clips.trim.handle_start")}
+              color={accentColor.value}
+              onGrab={() => setDragging("start")}
+              onNudge={(by) => moveHandle("start", start + by)}
+            />
+            <Handle
+              left={percent(end)}
+              active={dragging === "end"}
+              time={formatTime(end)}
+              label={t("clips.trim.handle_end")}
+              color={accentColor.value}
+              onGrab={() => setDragging("end")}
+              onNudge={(by) => moveHandle("end", end + by)}
+            />
           </div>
-        ) : (
-          <p className="min-w-0 flex-1 truncate px-4 font-minecraft text-xs text-white/60">
-            {stage.kind === "failed"
-              ? stage.why
-              : stage.kind === "done"
-                ? t("clips.editor.export.done")
-                : shape === "original"
-                  ? t("clips.editor.export.needs_shape")
-                  : ""}
-          </p>
-        )}
+        </div>
 
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => void runExport()}
-          disabled={busy || shape === "original" || stage.kind === "running"}
-          icon={
-            <Icon
-              icon={stage.kind === "running" ? "svg-spinners:ring-resize" : "solar:smartphone-bold"}
-              className="w-4 h-4"
-            />
-          }
-        >
-          {stage.kind === "failed" ? t("clips.editor.export.retry") : t("clips.editor.export.action")}
-        </Button>
-
-        <Button variant="secondary" size="sm" onClick={onCancel} disabled={busy}>
-          {t("clips.trim.cancel")}
-        </Button>
-        <Button
-          variant="default"
-          size="sm"
-          onClick={() => onSave(start, end, levels)}
-          disabled={busy || kept < MIN_LENGTH}
-          icon={
-            <Icon
-              icon={busy ? "svg-spinners:ring-resize" : "solar:scissors-bold"}
-              className="w-4 h-4"
-            />
-          }
-        >
-          {t("clips.trim.save")}
-        </Button>
+        <p className="mt-1.5 min-h-[1.25rem] font-minecraft text-xs text-white/50">
+          {overlays.length > 0 ? t("clips.editor.overlay.hint") : t("clips.trim.hint")}
+        </p>
       </div>
     </div>
   );
 }
 
-function Readout({ label, value }: { label: string; value: string }) {
+function PanelTitle({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-col items-center pb-1">
-      <span className="font-minecraft text-base text-white/80">{value}</span>
-      <span className="font-smallcaps text-xs uppercase tracking-wider text-white/50">{label}</span>
+    <span className="font-smallcaps text-[0.7rem] uppercase tracking-wider text-white/40">
+      {children}
+    </span>
+  );
+}
+
+function StateBadge({
+  stage,
+  percent,
+  color,
+  t,
+}: {
+  stage: ExportStage;
+  percent: number | null;
+  color: string;
+  t: Translate;
+}) {
+  const look =
+    stage.kind === "running"
+      ? { icon: "svg-spinners:ring-resize", tone: "text-white", text: percent === null ? t("clips.editor.export.starting") : t("clips.editor.export.progress", { percent }) }
+      : stage.kind === "done"
+        ? { icon: "solar:check-circle-bold", tone: "text-emerald-300", text: t("clips.editor.export.done") }
+        : stage.kind === "failed"
+          ? { icon: "solar:danger-triangle-bold", tone: "text-red-300", text: stage.why }
+          : { icon: "solar:stop-circle-bold", tone: "text-white/60", text: t("clips.editor.state.ready") };
+
+  return (
+    <span
+      title={look.text}
+      className={cn(
+        "flex max-w-[18rem] items-center gap-1.5 rounded border border-white/10 bg-black/40 px-2 py-1 font-minecraft text-xs",
+        look.tone,
+      )}
+      style={stage.kind === "running" ? { borderColor: `${color}80` } : undefined}
+    >
+      <Icon icon={look.icon} className="h-3.5 w-3.5 shrink-0" />
+      <span className="truncate">{look.text}</span>
+    </span>
+  );
+}
+
+function Lane({
+  icon,
+  name,
+  tint,
+  height,
+  active,
+  control,
+  tone,
+  onPick,
+  onScrub,
+  children,
+}: {
+  icon: string;
+  name: string;
+  tint: string;
+  height: string;
+  active?: boolean;
+  control?: ReactNode;
+  tone?: string;
+  onPick?: () => void;
+  onScrub?: (clientX: number) => void;
+  children?: ReactNode;
+}) {
+  const head = (
+    <>
+      <span className="h-4 w-1 shrink-0 rounded-full" style={{ backgroundColor: tint }} />
+      <Icon icon={icon} className="h-3.5 w-3.5 shrink-0 text-white/50" />
+      <span className="min-w-0 flex-1 truncate text-left font-minecraft text-xs text-white/70">
+        {name}
+      </span>
+    </>
+  );
+
+  return (
+    <div className="flex">
+      <div
+        className={cn(
+          "flex w-44 shrink-0 items-center gap-2 rounded-l border-y border-l border-white/10 bg-black/40 px-2",
+          height,
+        )}
+        style={active ? { backgroundColor: `${tint}25`, borderColor: `${tint}80` } : undefined}
+      >
+        {onPick ? (
+          <button
+            type="button"
+            onClick={onPick}
+            aria-pressed={active}
+            className="flex min-w-0 flex-1 items-center gap-2 focus:outline-none"
+          >
+            {head}
+          </button>
+        ) : (
+          head
+        )}
+        {control}
+      </div>
+      <div
+        role="presentation"
+        onPointerDown={onScrub ? (event) => onScrub(event.clientX) : undefined}
+        className={cn(
+          "relative min-w-0 flex-1 overflow-hidden rounded-r border border-white/10 bg-black/30",
+          height,
+          onScrub && "cursor-ew-resize",
+        )}
+        style={{ color: tone }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function AudioLane({
+  track,
+  name,
+  volume,
+  tone,
+  disabled,
+  onChange,
+  t,
+}: {
+  track: ClipAudioTrack;
+  name: string;
+  volume: number;
+  tone: string;
+  disabled: boolean;
+  onChange: (volume: number) => void;
+  t: Translate;
+}) {
+  const muted = volume === 0;
+
+  return (
+    <Lane
+      icon={track.label === "Microphone" ? "solar:microphone-bold" : "solar:soundwave-bold"}
+      name={name}
+      tint={tone}
+      tone={tone}
+      height="h-12"
+      control={
+        track.adjustable ? (
+          <div className="flex shrink-0 items-center gap-1">
+            <span
+              className={cn(
+                "w-9 text-right font-minecraft text-[0.7rem] tabular-nums",
+                volume === 100 ? "text-white/40" : "text-white",
+              )}
+            >
+              {volume}%
+            </span>
+            <ClipIconButton
+              icon={muted ? "solar:volume-cross-bold" : "solar:volume-loud-bold"}
+              label={muted ? t("clips.trim.unmute") : t("clips.trim.mute")}
+              tooltipPosition="top"
+              aria-pressed={muted}
+              disabled={disabled}
+              onClick={() => onChange(muted ? 100 : 0)}
+              className={cn("h-7 w-7", muted && "text-white/40 hover:text-white/70")}
+            />
+          </div>
+        ) : undefined
+      }
+    >
+      <Waveform peaks={track.peaks} gain={volume / 100} muted={muted} />
+    </Lane>
+  );
+}
+
+function OverlayLane({
+  overlay,
+  duration,
+  active,
+  accent,
+  name,
+  onPick,
+  onGrab,
+}: {
+  overlay: ClipOverlay;
+  duration: number;
+  active: boolean;
+  accent: string;
+  name: string;
+  onPick: () => void;
+  onGrab: (mode: "move" | "start" | "end", event: { clientX: number }) => void;
+}) {
+  const tint = overlayTint(overlay, accent);
+  const span = duration > 0 ? duration : 1;
+  const left = (overlay.startSeconds / span) * 100;
+  const width = ((overlay.endSeconds - overlay.startSeconds) / span) * 100;
+
+  return (
+    <Lane
+      icon={OVERLAY_ICON[overlay.kind]}
+      name={name}
+      tint={tint}
+      height="h-9"
+      active={active}
+      onPick={onPick}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={name}
+        aria-pressed={active}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          onGrab("move", event);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          onPick();
+        }}
+        className="absolute inset-y-1 flex cursor-grab items-center justify-center rounded border focus:outline-none"
+        style={{
+          left: `${left}%`,
+          width: `${width}%`,
+          borderColor: tint,
+          backgroundColor: `${tint}${active ? "60" : "30"}`,
+          boxShadow: active ? `0 0 10px ${tint}80` : undefined,
+        }}
+      >
+        <span className="pointer-events-none truncate px-3 font-minecraft text-xs text-white">
+          {name}
+        </span>
+        <span
+          role="presentation"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onGrab("start", event);
+          }}
+          className="absolute inset-y-0 left-0 w-2 cursor-ew-resize rounded-l bg-white/30 hover:bg-white/60"
+        />
+        <span
+          role="presentation"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onGrab("end", event);
+          }}
+          className="absolute inset-y-0 right-0 w-2 cursor-ew-resize rounded-r bg-white/30 hover:bg-white/60"
+        />
+      </div>
+    </Lane>
+  );
+}
+
+function Readout({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="flex flex-col items-center leading-tight">
+      <span
+        className={cn(
+          "font-minecraft tabular-nums",
+          strong ? "text-base text-white" : "text-sm text-white/80",
+        )}
+      >
+        {value}
+      </span>
+      <span className="font-smallcaps text-[0.65rem] uppercase tracking-wider text-white/50">
+        {label}
+      </span>
     </div>
   );
 }
@@ -912,7 +1350,7 @@ function Handle({
         const step = event.shiftKey ? NUDGE * 10 : NUDGE;
         onNudge(event.key === "ArrowLeft" ? -step : step);
       }}
-      className="group absolute inset-y-0 w-6 -translate-x-1/2 cursor-ew-resize focus:outline-none"
+      className="group pointer-events-auto absolute inset-y-0 w-6 -translate-x-1/2 cursor-ew-resize focus:outline-none"
       style={{ left: `${left}%` }}
     >
       <span
@@ -924,7 +1362,7 @@ function Handle({
       />
       <span
         className={cn(
-          "pointer-events-none absolute -top-1 left-1/2 -translate-x-1/2 -translate-y-full rounded bg-black/80 border border-white/10 px-1.5 py-0.5 font-minecraft text-xs text-white transition-opacity",
+          "pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 rounded bg-black/80 border border-white/10 px-1.5 py-0.5 font-minecraft text-xs text-white transition-opacity",
           active ? "opacity-100" : "opacity-0 group-hover:opacity-100",
         )}
       >
@@ -950,22 +1388,22 @@ function PropSlider({
   onChange: (value: number) => void;
 }) {
   return (
-    <div className="flex min-w-[14rem] flex-1 items-center gap-3">
-      <span className="shrink-0 truncate font-minecraft text-sm text-white/80">{label}</span>
-      <div className="min-w-0 flex-1">
-        <RangeSlider
-          value={value}
-          onChange={onChange}
-          min={min}
-          max={max}
-          step={1}
-          size="sm"
-          showValue={false}
-          disabled={disabled}
-          label={label}
-        />
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="min-w-0 truncate font-minecraft text-sm text-white/80">{label}</span>
+        <span className="shrink-0 font-minecraft text-sm tabular-nums text-white">{value}</span>
       </div>
-      <span className="w-10 shrink-0 text-right font-minecraft text-sm text-white">{value}</span>
+      <RangeSlider
+        value={value}
+        onChange={onChange}
+        min={min}
+        max={max}
+        step={1}
+        size="sm"
+        showValue={false}
+        disabled={disabled}
+        label={label}
+      />
     </div>
   );
 }
@@ -981,7 +1419,7 @@ function ShadeChoice({
   value: number;
   disabled: boolean;
   onChange: (colour: number) => void;
-  t: (key: string, options?: Record<string, unknown>) => string;
+  t: Translate;
 }) {
   const { showModal, hideModal } = useGlobalModal();
   const [typed, setTyped] = useState(grey(value));
@@ -997,63 +1435,68 @@ function ShadeChoice({
   };
 
   return (
-    <div className="flex shrink-0 items-center gap-2">
+    <div className="flex flex-col gap-1.5">
       <span className="font-minecraft text-sm text-white/80">{label}</span>
 
-      <button
-        type="button"
-        disabled={disabled}
-        aria-label={t("clips.editor.overlay.colour.pick")}
-        title={t("clips.editor.overlay.colour.pick")}
-        onClick={() =>
-          showModal(
-            OVERLAY_COLOUR_MODAL,
-            <ColorPickerModal
-              initialColor={grey(value)}
-              applyToTheme={false}
-              onColorSelected={(picked) => accept(picked)}
-              onClose={() => hideModal(OVERLAY_COLOUR_MODAL)}
-            />,
-          )
-        }
-        className={cn(
-          "h-7 w-7 shrink-0 rounded border border-white/20 transition-colors",
-          disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:border-white/60",
-        )}
-        style={{ backgroundColor: grey(value) }}
-      />
-
-      <input
-        type="text"
-        value={typed}
-        disabled={disabled}
-        spellCheck={false}
-        maxLength={7}
-        aria-label={t("clips.editor.overlay.colour.hex")}
-        onChange={(event) => accept(event.target.value)}
-        onBlur={() => setTyped(grey(value))}
-        className={cn(
-          "w-24 rounded border border-white/20 bg-black/30 px-2 py-1 font-minecraft text-sm uppercase text-white/90 outline-none transition-colors",
-          disabled ? "cursor-not-allowed opacity-40" : "hover:border-white/40 focus:border-white/60",
-        )}
-      />
-
-      {SWATCHES.map((preset) => (
+      <div className="flex items-center gap-2">
         <button
-          key={preset}
           type="button"
           disabled={disabled}
-          aria-label={grey(preset)}
-          title={grey(preset)}
-          onClick={() => onChange(preset)}
+          aria-label={t("clips.editor.overlay.colour.pick")}
+          title={t("clips.editor.overlay.colour.pick")}
+          onClick={() =>
+            showModal(
+              OVERLAY_COLOUR_MODAL,
+              <ColorPickerModal
+                initialColor={grey(value)}
+                applyToTheme={false}
+                onColorSelected={(picked) => accept(picked)}
+                onClose={() => hideModal(OVERLAY_COLOUR_MODAL)}
+              />,
+              1200,
+            )
+          }
           className={cn(
-            "h-5 w-5 shrink-0 rounded border transition-colors",
-            value === preset ? "border-white" : "border-white/20 hover:border-white/60",
-            disabled && "cursor-not-allowed opacity-40",
+            "h-7 w-7 shrink-0 rounded border border-white/20 transition-colors",
+            disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:border-white/60",
           )}
-          style={{ backgroundColor: grey(preset) }}
+          style={{ backgroundColor: grey(value) }}
         />
-      ))}
+
+        <input
+          type="text"
+          value={typed}
+          disabled={disabled}
+          spellCheck={false}
+          maxLength={7}
+          aria-label={t("clips.editor.overlay.colour.hex")}
+          onChange={(event) => accept(event.target.value)}
+          onBlur={() => setTyped(grey(value))}
+          className={cn(
+            "min-w-0 flex-1 rounded border border-white/20 bg-black/30 px-2 py-1 font-minecraft text-sm uppercase text-white/90 outline-none transition-colors",
+            disabled ? "cursor-not-allowed opacity-40" : "hover:border-white/40 focus:border-white/60",
+          )}
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {SWATCHES.map((preset) => (
+          <button
+            key={preset}
+            type="button"
+            disabled={disabled}
+            aria-label={grey(preset)}
+            title={grey(preset)}
+            onClick={() => onChange(preset)}
+            className={cn(
+              "h-5 w-5 shrink-0 rounded border transition-colors",
+              value === preset ? "border-white" : "border-white/20 hover:border-white/60",
+              disabled && "cursor-not-allowed opacity-40",
+            )}
+            style={{ backgroundColor: grey(preset) }}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -1071,12 +1514,12 @@ function CornerChoice({
   color: string;
   disabled: boolean;
   onChange: (corner: ClipCorner) => void;
-  t: (key: string, options?: Record<string, unknown>) => string;
+  t: Translate;
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-2">
+    <div className="flex flex-col gap-1.5">
       <span className="font-minecraft text-sm text-white/80">{label}</span>
-      <div className="grid grid-cols-2 gap-1">
+      <div className="grid w-fit grid-cols-2 gap-1">
         {CORNERS.map((corner) => (
           <button
             key={corner.value}
@@ -1087,7 +1530,7 @@ function CornerChoice({
             title={t(corner.label)}
             onClick={() => onChange(corner.value)}
             className={cn(
-              "flex h-6 w-6 items-center justify-center rounded border transition-colors",
+              "flex h-7 w-7 items-center justify-center rounded border transition-colors",
               value === corner.value
                 ? "text-white"
                 : "border-white/10 bg-black/30 text-white/50 hover:text-white",
@@ -1176,6 +1619,7 @@ function OverlayArt({ overlay }: { overlay: ClipOverlay }) {
 function OverlayBox({
   overlay,
   active,
+  visible,
   color,
   label,
   onPick,
@@ -1183,6 +1627,7 @@ function OverlayBox({
 }: {
   overlay: ClipOverlay;
   active: boolean;
+  visible: boolean;
   color: string;
   label: string;
   onPick: () => void;
@@ -1214,6 +1659,7 @@ function OverlayBox({
         "absolute cursor-move rounded-sm border-2 transition-colors focus:outline-none",
         active ? "bg-white/5" : "border-white/40 bg-black/10 hover:border-white/70",
         blank && "border-dashed",
+        !visible && "opacity-40",
       )}
       style={{
         left: `${overlay.left * 100}%`,
@@ -1242,78 +1688,8 @@ function OverlayBox({
   );
 }
 
-function OverlayBar({
-  overlay,
-  duration,
-  active,
-  color,
-  name,
-  onPick,
-  onGrab,
-}: {
-  overlay: ClipOverlay;
-  duration: number;
-  active: boolean;
-  color: string;
-  name: string;
-  onPick: () => void;
-  onGrab: (mode: "move" | "start" | "end", event: { clientX: number }) => void;
-}) {
-  const span = duration > 0 ? duration : 1;
-  const left = (overlay.startSeconds / span) * 100;
-  const width = ((overlay.endSeconds - overlay.startSeconds) / span) * 100;
-
-  return (
-    <div className="relative h-7 overflow-hidden rounded bg-black/40 border border-white/10">
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label={name}
-        aria-pressed={active}
-        onPointerDown={(event) => {
-          event.preventDefault();
-          onGrab("move", event);
-        }}
-        onKeyDown={(event) => {
-          if (event.key !== "Enter" && event.key !== " ") return;
-          event.preventDefault();
-          onPick();
-        }}
-        className={cn(
-          "absolute inset-y-0 flex cursor-grab items-center justify-center rounded border focus:outline-none",
-          active ? "" : "border-white/20 bg-white/10 hover:bg-white/20",
-        )}
-        style={{
-          left: `${left}%`,
-          width: `${width}%`,
-          borderColor: active ? color : undefined,
-          backgroundColor: active ? `${color}50` : undefined,
-        }}
-      >
-        <span className="pointer-events-none truncate px-3 font-minecraft text-xs text-white/80">
-          {name}
-        </span>
-        <span
-          role="presentation"
-          onPointerDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onGrab("start", event);
-          }}
-          className="absolute inset-y-0 left-0 w-2 cursor-ew-resize bg-white/30 hover:bg-white/60"
-        />
-        <span
-          role="presentation"
-          onPointerDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onGrab("end", event);
-          }}
-          className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-white/30 hover:bg-white/60"
-        />
-      </div>
-    </div>
-  );
+function overlayTint(overlay: ClipOverlay, fallback: string): string {
+  return overlay.kind === "blur" ? fallback : grey(overlay.colour);
 }
 
 function clamp(value: number, low: number, high: number): number {
@@ -1396,4 +1772,9 @@ function formatTime(seconds: number): string {
   const rest = whole % 60;
   const tenths = Math.floor((seconds - whole) * 10);
   return `${minutes}:${String(rest).padStart(2, "0")}.${tenths}`;
+}
+
+function formatTick(seconds: number): string {
+  const whole = Math.round(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
 }
