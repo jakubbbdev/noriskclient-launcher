@@ -205,6 +205,8 @@ export interface TrackLevel {
   stream: number;
   volume: number;
   offsetSeconds: number;
+  startSeconds: number | null;
+  endSeconds: number | null;
 }
 
 export async function trimClip(
@@ -221,6 +223,8 @@ export async function trimClip(
       stream: level.stream,
       volume: level.volume,
       offset_seconds: level.offsetSeconds,
+      start_seconds: level.startSeconds,
+      end_seconds: level.endSeconds,
     })),
   });
 }
