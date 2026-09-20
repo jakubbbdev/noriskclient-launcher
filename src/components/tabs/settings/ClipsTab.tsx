@@ -546,6 +546,38 @@ export function ClipsTab() {
               </div>
             </SettingRow>
 
+            {effectiveAudioSource === "system" && (
+              <SettingRow
+                label={t("settings.clips.audio.exclude")}
+                description={t(
+                  clips.audio_device_id
+                    ? "settings.clips.audio.exclude.needs_default_device"
+                    : "settings.clips.audio.exclude.description",
+                )}
+                searchKeywords={kw("settings.clips.audio.exclude", "spotify", "musik", "music", "ausnehmen", "exclude", "programm")}
+                disabled={!clips.enabled}
+                vertical
+              >
+                <GamePicker
+                  value={
+                    clips.excluded_audio_executable
+                      ? {
+                          executable: clips.excluded_audio_executable,
+                          name: clips.excluded_audio_executable,
+                        }
+                      : null
+                  }
+                  onChange={(app) =>
+                    patch({ excluded_audio_executable: app?.executable ?? null })
+                  }
+                  disabled={!clips.enabled || saving || Boolean(clips.audio_device_id)}
+                  icon="solar:volume-cross-bold"
+                  noneDescription={t("settings.clips.audio.exclude.none")}
+                  t={t}
+                />
+              </SettingRow>
+            )}
+
             {effectiveAudioSource !== "game_only" && (
               <SettingRow
                 label={t(

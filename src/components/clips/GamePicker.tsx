@@ -14,9 +14,18 @@ interface Props {
   onChange: (game: OtherGame | null) => void;
   disabled: boolean;
   t: (key: string, options?: Record<string, unknown>) => string;
+  icon?: string;
+  noneDescription?: string;
 }
 
-export function GamePicker({ value, onChange, disabled, t }: Props) {
+export function GamePicker({
+  value,
+  onChange,
+  disabled,
+  t,
+  icon = "solar:gamepad-bold",
+  noneDescription,
+}: Props) {
   const [apps, setApps] = useState<OpenApp[] | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -67,7 +76,7 @@ export function GamePicker({ value, onChange, disabled, t }: Props) {
         <Row
           icon="solar:close-circle-bold"
           name={t("settings.clips.games.none")}
-          detail={t("settings.clips.games.none.description")}
+          detail={noneDescription ?? t("settings.clips.games.none.description")}
           selected={value === null}
           disabled={disabled}
           onSelect={() => onChange(null)}
@@ -76,7 +85,7 @@ export function GamePicker({ value, onChange, disabled, t }: Props) {
         {rows.map((app) => (
           <Row
             key={app.executable}
-            icon="solar:gamepad-bold"
+            icon={icon}
             name={app.name}
             detail={
               app.pid === 0
