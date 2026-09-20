@@ -129,12 +129,26 @@ export function useTrimPreview({ path, video, levels, active }: Options): Previe
       const at = element.currentTime;
       for (const [stream, buffer] of buffers.current) {
         const gain = gains.current.get(stream);
-        if (!gain || at >= buffer.duration) continue;
+        if (!gain) continue;
+
+        const level = wanted.current.find((one) => one.stream === stream);
+        const shift = level?.offsetSeconds ?? 0;
+        const opens = level?.startSeconds ?? null;
+        const closes = level?.endSeconds ?? null;
+
+        const from = opens === null ? at : Math.max(at, opens);
+        const seek = from - shift;
+        const enter = seek < 0 ? from - seek : from;
+        const head = Math.max(seek, 0);
+        if (head >= buffer.duration) continue;
+
+        const span = closes === null ? undefined : closes - enter;
+        if (span !== undefined && span <= 0) continue;
 
         const source = audio.createBufferSource();
         source.buffer = buffer;
         source.connect(gain);
-        source.start(0, at);
+        source.start(audio.currentTime + (enter - at), head, span);
         playing.current.push(source);
       }
     };
