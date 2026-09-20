@@ -22,6 +22,8 @@ import { ClipIconButton } from "./ClipIconButton";
 import { cn } from "../../lib/utils";
 import { parseErrorMessage } from "../../utils/error-utils";
 import { useTrimPreview } from "./useTrimPreview";
+import { ColorPickerModal } from "../modals/ColorPickerModal";
+import { useGlobalModal } from "../../hooks/useGlobalModal";
 
 const MIN_LENGTH = 0.5;
 
@@ -71,6 +73,8 @@ const OVERLAY_NAME: Record<ClipOverlay["kind"], string> = {
   arrow: "clips.editor.overlay.name_arrow",
   text: "clips.editor.overlay.name_text",
 };
+
+const OVERLAY_COLOUR_MODAL = "clip-overlay-colour";
 
 const SWATCHES: number[] = [0xffffff, 0x000000, 0xff3b30, 0xffcc00, 0x34c759, 0x0a84ff];
 
@@ -979,6 +983,7 @@ function ShadeChoice({
   onChange: (colour: number) => void;
   t: (key: string, options?: Record<string, unknown>) => string;
 }) {
+  const { showModal, hideModal } = useGlobalModal();
   const [typed, setTyped] = useState(grey(value));
 
   useEffect(() => {
@@ -995,23 +1000,28 @@ function ShadeChoice({
     <div className="flex shrink-0 items-center gap-2">
       <span className="font-minecraft text-sm text-white/80">{label}</span>
 
-      <label
+      <button
+        type="button"
+        disabled={disabled}
+        aria-label={t("clips.editor.overlay.colour.pick")}
+        title={t("clips.editor.overlay.colour.pick")}
+        onClick={() =>
+          showModal(
+            OVERLAY_COLOUR_MODAL,
+            <ColorPickerModal
+              initialColor={grey(value)}
+              applyToTheme={false}
+              onColorSelected={(picked) => accept(picked)}
+              onClose={() => hideModal(OVERLAY_COLOUR_MODAL)}
+            />,
+          )
+        }
         className={cn(
-          "relative h-7 w-7 shrink-0 overflow-hidden rounded border border-white/20",
+          "h-7 w-7 shrink-0 rounded border border-white/20 transition-colors",
           disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:border-white/60",
         )}
         style={{ backgroundColor: grey(value) }}
-        title={t("clips.editor.overlay.colour.pick")}
-      >
-        <input
-          type="color"
-          value={grey(value)}
-          disabled={disabled}
-          aria-label={t("clips.editor.overlay.colour.pick")}
-          onChange={(event) => accept(event.target.value)}
-          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-        />
-      </label>
+      />
 
       <input
         type="text"
