@@ -191,6 +191,7 @@ fn paint(frame: &Frame, origin: i64, overlays: &[norisk_ipc::ClipOverlay]) -> Re
                 stride,
                 width,
                 height,
+                channel: crate::overlay::Channel::Luma,
             };
             apply(&mut luma, rect, &overlay.kind);
 
@@ -208,6 +209,7 @@ fn paint(frame: &Frame, origin: i64, overlays: &[norisk_ipc::ClipOverlay]) -> Re
                     stride,
                     width: chroma_width,
                     height: chroma_height,
+                    channel: crate::overlay::Channel::Chroma,
                 };
                 apply(&mut plane, chroma, &overlay.kind);
             }
@@ -672,12 +674,39 @@ mod probe {
 mod render_tests {
     #[test]
     #[ignore = "needs a real clip in NRC_TEST_CLIP"]
-    fn a_real_clip_can_be_squared_and_blurred() {
+    fn a_real_clip_takes_a_blur_an_arrow_and_some_text() {
         let source = std::path::PathBuf::from(std::env::var("NRC_TEST_CLIP").unwrap());
         let destination = std::env::temp_dir().join("nrc-overlay-test.mp4");
         let _ = std::fs::remove_file(&destination);
 
-        let overlays = vec![norisk_ipc::ClipOverlay {
+        let overlays = vec![
+            norisk_ipc::ClipOverlay {
+                kind: norisk_ipc::OverlayKind::Text {
+                    content: "NORISK CLIPS".into(),
+                    size: 48,
+                    shade: 235,
+                },
+                left: 0.08,
+                top: 0.62,
+                width: 0.84,
+                height: 0.2,
+                start_seconds: 0.0,
+                end_seconds: 999.0,
+            },
+            norisk_ipc::ClipOverlay {
+                kind: norisk_ipc::OverlayKind::Arrow {
+                    shade: 235,
+                    thickness: 9,
+                    towards: norisk_ipc::Corner::BottomRight,
+                },
+                left: 0.55,
+                top: 0.12,
+                width: 0.3,
+                height: 0.3,
+                start_seconds: 0.0,
+                end_seconds: 999.0,
+            },
+            norisk_ipc::ClipOverlay {
             kind: norisk_ipc::OverlayKind::Blur { strength: 12 },
             left: 0.0,
             top: 0.0,

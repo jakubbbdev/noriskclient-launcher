@@ -2,11 +2,40 @@ use norisk_ipc::{ClipOverlay, Corner, OverlayKind};
 
 const BLUR_PASSES: usize = 3;
 
+const FONT: &[u8] = include_bytes!("../../../../public/fonts/smallcaps.ttf");
+const NEUTRAL: u8 = 128;
+
+static PARSED: std::sync::OnceLock<Option<ab_glyph::FontRef<'static>>> =
+    std::sync::OnceLock::new();
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Channel {
+    Luma,
+    Chroma,
+}
+
 pub struct Plane<'a> {
     pub data: &'a mut [u8],
     pub stride: usize,
     pub width: usize,
     pub height: usize,
+    pub channel: Channel,
+}
+
+impl Plane<'_> {
+    fn shade_for(&self, wanted: u8) -> u8 {
+        match self.channel {
+            Channel::Luma => wanted,
+            Channel::Chroma => NEUTRAL,
+        }
+    }
+
+    fn scale(&self) -> f32 {
+        match self.channel {
+            Channel::Luma => 1.0,
+            Channel::Chroma => 0.5,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,17 +87,94 @@ pub fn apply(plane: &mut Plane, rect: Rect, kind: &OverlayKind) {
             thickness,
             towards,
         } => arrow(plane, rect, *shade, *thickness, *towards),
+        OverlayKind::Text {
+            content,
+            size,
+            shade,
+        } => text(plane, rect, content, *size, *shade),
     }
 }
 
 fn fill(plane: &mut Plane, rect: Rect, shade: u8) {
+    let shade = plane.shade_for(shade);
     for y in rect.top..rect.top + rect.height {
         let start = y * plane.stride + rect.left;
         plane.data[start..start + rect.width].fill(shade);
     }
 }
 
+fn text(plane: &mut Plane, rect: Rect, content: &str, size: u32, shade: u8) {
+    use ab_glyph::{Font, ScaleFont};
+
+    let Some(font) = PARSED
+        .get_or_init(|| ab_glyph::FontRef::try_from_slice(FONT).ok())
+        .as_ref()
+    else {
+        log::error!("The bundled font could not be read, so text overlays are skipped");
+        return;
+    };
+
+    let content = content.trim();
+    if content.is_empty() {
+        return;
+    }
+
+    let shade = plane.shade_for(shade);
+    let scaled = font.as_scaled(ab_glyph::PxScale::from(
+        (size.clamp(4, 512) as f32 * plane.scale()).max(1.0),
+    ));
+    let line_height = scaled.height() + scaled.line_gap();
+
+    let mut pen_x = 0.0f32;
+    let mut baseline = scaled.ascent();
+
+    for character in content.chars() {
+        if character == '\n' {
+            pen_x = 0.0;
+            baseline += line_height;
+            continue;
+        }
+
+        let glyph_id = font.glyph_id(character);
+        let advance = scaled.h_advance(glyph_id);
+
+        if pen_x + advance > rect.width as f32 && pen_x > 0.0 {
+            pen_x = 0.0;
+            baseline += line_height;
+        }
+        if baseline - scaled.descent() > rect.height as f32 {
+            break;
+        }
+
+        let glyph = glyph_id.with_scale_and_position(
+            scaled.scale(),
+            ab_glyph::point(pen_x, baseline),
+        );
+        if let Some(outline) = font.outline_glyph(glyph) {
+            let bounds = outline.px_bounds();
+            outline.draw(|x, y, coverage| {
+                let at_x = bounds.min.x as i64 + x as i64;
+                let at_y = bounds.min.y as i64 + y as i64;
+                if at_x < 0 || at_y < 0 {
+                    return;
+                }
+                let (at_x, at_y) = (at_x as usize, at_y as usize);
+                if at_x >= rect.width || at_y >= rect.height {
+                    return;
+                }
+                let slot = (rect.top + at_y) * plane.stride + rect.left + at_x;
+                let was = plane.data[slot] as f32;
+                let coverage = coverage.clamp(0.0, 1.0);
+                plane.data[slot] = (was + (shade as f32 - was) * coverage).round() as u8;
+            });
+        }
+
+        pen_x += advance;
+    }
+}
+
 fn arrow(plane: &mut Plane, rect: Rect, shade: u8, thickness: u32, towards: Corner) {
+    let shade = plane.shade_for(shade);
     let thickness = (thickness.max(1) as usize).min(rect.width.min(rect.height));
     let (width, height) = (rect.width as f64, rect.height as f64);
 
@@ -230,7 +336,7 @@ mod tests {
         let rect = Rect { left: 16, top: 16, width: 32, height: 32 };
 
         let before = spread(&data, width, rect);
-        let mut plane = Plane { data: &mut data, stride: width, width, height };
+        let mut plane = Plane { data: &mut data, stride: width, width, height, channel: Channel::Luma };
         apply(&mut plane, rect, &OverlayKind::Blur { strength: 6 });
         let after = spread(&data, width, rect);
 
@@ -247,7 +353,7 @@ mod tests {
         let mut data = original.clone();
         let rect = Rect { left: 16, top: 16, width: 32, height: 32 };
 
-        let mut plane = Plane { data: &mut data, stride: width, width, height };
+        let mut plane = Plane { data: &mut data, stride: width, width, height, channel: Channel::Luma };
         apply(&mut plane, rect, &OverlayKind::Blur { strength: 6 });
 
         for y in 0..height {
@@ -278,7 +384,7 @@ mod tests {
         }
 
         let rect = Rect { left: 4, top: 4, width: 16, height: 16 };
-        let mut plane = Plane { data: &mut data, stride, width, height };
+        let mut plane = Plane { data: &mut data, stride, width, height, channel: Channel::Luma };
         apply(&mut plane, rect, &OverlayKind::Blur { strength: 4 });
 
         for y in 0..height {
@@ -297,7 +403,7 @@ mod tests {
         }
         let rect = Rect { left: 0, top: 0, width, height };
 
-        let mut plane = Plane { data: &mut data, stride: width, width, height };
+        let mut plane = Plane { data: &mut data, stride: width, width, height, channel: Channel::Luma };
         apply(&mut plane, rect, &OverlayKind::Blur { strength: 10 });
 
         assert!(data.iter().all(|v| *v == 200), "a flat area changed value");
@@ -310,7 +416,7 @@ mod tests {
         let mut data = original.clone();
         let rect = Rect { left: 8, top: 8, width: 10, height: 6 };
 
-        let mut plane = Plane { data: &mut data, stride: width, width, height };
+        let mut plane = Plane { data: &mut data, stride: width, width, height, channel: Channel::Luma };
         apply(&mut plane, rect, &OverlayKind::Box { shade: 16 });
 
         for y in rect.top..rect.top + rect.height {
@@ -328,7 +434,7 @@ mod tests {
         let mut data = vec![9u8; stride * height];
         let rect = Rect { left: 2, top: 2, width: 12, height: 12 };
 
-        let mut plane = Plane { data: &mut data, stride, width, height };
+        let mut plane = Plane { data: &mut data, stride, width, height, channel: Channel::Luma };
         apply(&mut plane, rect, &OverlayKind::Box { shade: 100 });
 
         for y in 0..height {
@@ -344,7 +450,7 @@ mod tests {
         let mut data = vec![0u8; width * height];
         let rect = Rect { left: 0, top: 0, width, height };
 
-        let mut plane = Plane { data: &mut data, stride: width, width, height };
+        let mut plane = Plane { data: &mut data, stride: width, width, height, channel: Channel::Luma };
         apply(
             &mut plane,
             rect,
@@ -368,7 +474,7 @@ mod tests {
 
         for (towards, head) in corners {
             let mut data = vec![0u8; width * height];
-            let mut plane = Plane { data: &mut data, stride: width, width, height };
+            let mut plane = Plane { data: &mut data, stride: width, width, height, channel: Channel::Luma };
             apply(
                 &mut plane,
                 Rect { left: 0, top: 0, width, height },
@@ -385,7 +491,7 @@ mod tests {
         let mut data = original.clone();
         let rect = Rect { left: 10, top: 10, width: 20, height: 20 };
 
-        let mut plane = Plane { data: &mut data, stride: width, width, height };
+        let mut plane = Plane { data: &mut data, stride: width, width, height, channel: Channel::Luma };
         apply(
             &mut plane,
             rect,
@@ -406,6 +512,125 @@ mod tests {
     }
 
     #[test]
+    fn a_box_on_a_colour_plane_goes_neutral_instead_of_tinting() {
+        let (width, height) = (16, 16);
+        let mut data = vec![90u8; width * height];
+        let rect = Rect { left: 0, top: 0, width, height };
+
+        let mut plane = Plane {
+            data: &mut data,
+            stride: width,
+            width,
+            height,
+            channel: Channel::Chroma,
+        };
+        apply(&mut plane, rect, &OverlayKind::Box { shade: 16 });
+
+        assert!(
+            data.iter().all(|v| *v == NEUTRAL),
+            "a black box tinted the picture instead of staying grey",
+        );
+    }
+
+    #[test]
+    fn an_arrow_on_a_colour_plane_goes_neutral_too() {
+        let (width, height) = (24, 24);
+        let mut data = vec![90u8; width * height];
+        let rect = Rect { left: 0, top: 0, width, height };
+
+        let mut plane = Plane {
+            data: &mut data,
+            stride: width,
+            width,
+            height,
+            channel: Channel::Chroma,
+        };
+        apply(
+            &mut plane,
+            rect,
+            &OverlayKind::Arrow { shade: 235, thickness: 3, towards: Corner::BottomRight },
+        );
+
+        assert!(
+            data.iter().all(|v| *v == 90 || *v == NEUTRAL),
+            "the arrow wrote a colour value onto a colour plane",
+        );
+        assert!(data.iter().any(|v| *v == NEUTRAL), "the arrow drew nothing");
+    }
+
+    #[test]
+    fn text_marks_the_picture_and_stays_in_its_box() {
+        let (width, height) = (200, 80);
+        let original = vec![40u8; width * height];
+        let mut data = original.clone();
+        let rect = Rect { left: 10, top: 10, width: 150, height: 50 };
+
+        let mut plane = Plane {
+            data: &mut data,
+            stride: width,
+            width,
+            height,
+            channel: Channel::Luma,
+        };
+        apply(
+            &mut plane,
+            rect,
+            &OverlayKind::Text { content: "HALLO".into(), size: 32, shade: 235 },
+        );
+
+        let changed = data.iter().zip(&original).filter(|(a, b)| a != b).count();
+        assert!(changed > 50, "text drew almost nothing ({changed} pixels)");
+
+        for y in 0..height {
+            for x in 0..width {
+                let inside = x >= rect.left
+                    && x < rect.left + rect.width
+                    && y >= rect.top
+                    && y < rect.top + rect.height;
+                if !inside {
+                    assert_eq!(
+                        data[y * width + x],
+                        original[y * width + x],
+                        "text spilled outside its box at {x},{y}",
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn empty_text_changes_nothing() {
+        let (width, height) = (64, 32);
+        let original = vec![40u8; width * height];
+        let mut data = original.clone();
+
+        let mut plane = Plane {
+            data: &mut data,
+            stride: width,
+            width,
+            height,
+            channel: Channel::Luma,
+        };
+        apply(
+            &mut plane,
+            Rect { left: 0, top: 0, width, height },
+            &OverlayKind::Text { content: "   ".into(), size: 20, shade: 235 },
+        );
+
+        assert_eq!(data, original);
+    }
+
+    #[test]
+    fn the_bundled_font_can_actually_be_read() {
+        assert!(
+            PARSED
+                .get_or_init(|| ab_glyph::FontRef::try_from_slice(FONT).ok())
+                .is_some(),
+            "the font shipped with the engine did not parse",
+        );
+    }
+
+    #[test]
     fn chroma_planes_get_the_matching_half_sized_rectangle() {
         let rect = Rect { left: 480, top: 540, width: 960, height: 270 };
         let chroma = halve(rect);
@@ -418,7 +643,7 @@ mod tests {
         let mut data = checkerboard(width, height);
         let rect = Rect { left: 24, top: 24, width: 99, height: 99 };
 
-        let mut plane = Plane { data: &mut data, stride: width, width, height };
+        let mut plane = Plane { data: &mut data, stride: width, width, height, channel: Channel::Luma };
         apply(&mut plane, rect, &OverlayKind::Blur { strength: 4 });
 
         assert_eq!(data.len(), width * height);
@@ -431,7 +656,7 @@ mod tests {
         let mut data = original.clone();
         let rect = Rect { left: 40, top: 40, width: 8, height: 8 };
 
-        let mut plane = Plane { data: &mut data, stride: width, width, height };
+        let mut plane = Plane { data: &mut data, stride: width, width, height, channel: Channel::Luma };
         apply(&mut plane, rect, &OverlayKind::Blur { strength: 4 });
 
         assert_eq!(data, original);
