@@ -895,6 +895,7 @@ async fn main() {
             commands::clip_commands::clip_open_apps,
             commands::clip_commands::clip_save_thumbnail,
             commands::clip_commands::clip_export_vertical,
+            commands::clip_commands::clip_export_gif,
             commands::clip_commands::clip_prepare_preview,
             commands::clip_commands::clip_rename,
             commands::clip_commands::clip_open_folder,

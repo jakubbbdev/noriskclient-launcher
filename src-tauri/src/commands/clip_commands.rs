@@ -329,6 +329,24 @@ pub async fn clip_export_vertical(
 }
 
 #[tauri::command]
+pub async fn clip_export_gif(
+    path: std::path::PathBuf,
+) -> Result<std::path::PathBuf, CommandError> {
+    let dir = clip_dir().await?;
+    let destination = crate::utils::clip_library::gif_destination(&dir, &path)?;
+
+    let state = State::get().await?;
+    state
+        .capture_supervisor
+        .send(LauncherToCapture::ExportGif(norisk_ipc::ExportGifRequest {
+            source: path,
+            destination: destination.clone(),
+        }))?;
+
+    Ok(destination)
+}
+
+#[tauri::command]
 pub async fn clip_trim(
     path: std::path::PathBuf,
     start_seconds: f64,

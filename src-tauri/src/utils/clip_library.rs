@@ -516,14 +516,18 @@ pub fn enforce_limit(dir: &Path, limit_gb: u32) -> Result<Vec<PathBuf>> {
 }
 
 pub fn vertical_destination(dir: &Path, source: &Path) -> Result<PathBuf> {
-    beside(dir, source, "_vertical")
+    beside(dir, source, "_vertical", "mp4")
 }
 
 pub fn trimmed_destination(dir: &Path, source: &Path) -> Result<PathBuf> {
-    beside(dir, source, "_trimmed")
+    beside(dir, source, "_trimmed", "mp4")
 }
 
-fn beside(dir: &Path, source: &Path, suffix: &str) -> Result<PathBuf> {
+pub fn gif_destination(dir: &Path, source: &Path) -> Result<PathBuf> {
+    beside(dir, source, "", "gif")
+}
+
+fn beside(dir: &Path, source: &Path, suffix: &str, extension: &str) -> Result<PathBuf> {
     let source = guard_inside(dir, source)?;
     let dir = dir
         .canonicalize()
@@ -538,9 +542,9 @@ fn beside(dir: &Path, source: &Path, suffix: &str) -> Result<PathBuf> {
 
     for attempt in 0..1000 {
         let name = if attempt == 0 {
-            format!("{base}{suffix}.mp4")
+            format!("{base}{suffix}.{extension}")
         } else {
-            format!("{base}{suffix}{}.mp4", attempt + 1)
+            format!("{base}{suffix}{}.{extension}", attempt + 1)
         };
         let candidate = dir.join(name);
         if !candidate.exists() {
@@ -550,7 +554,7 @@ fn beside(dir: &Path, source: &Path, suffix: &str) -> Result<PathBuf> {
 
     Err(AppError::Other(format!(
         "there are already a thousand {} versions of this clip",
-        suffix.trim_start_matches('_'),
+        if suffix.is_empty() { extension } else { suffix.trim_start_matches('_') },
     )))
 }
 
@@ -643,6 +647,40 @@ mod tests {
         let path = dir.join(name);
         std::fs::write(&path, vec![0u8; bytes]).unwrap();
         path
+    }
+
+    #[test]
+    fn a_gif_sits_next_to_its_clip_under_the_same_name() {
+        let dir = temp_dir("gif-destination");
+        let clip = write_clip(&dir, "fight.mp4", 10);
+
+        let gif = gif_destination(&dir, &clip).unwrap();
+        assert_eq!(gif.file_name().unwrap(), "fight.gif");
+    }
+
+    #[test]
+    fn a_second_gif_of_the_same_clip_gets_a_number() {
+        let dir = temp_dir("gif-collision");
+        let clip = write_clip(&dir, "fight.mp4", 10);
+        write_clip(&dir, "fight.gif", 10);
+
+        let gif = gif_destination(&dir, &clip).unwrap();
+        assert_eq!(gif.file_name().unwrap(), "fight2.gif");
+    }
+
+    #[test]
+    fn exports_keep_their_own_suffixes_apart() {
+        let dir = temp_dir("gif-suffixes");
+        let clip = write_clip(&dir, "fight.mp4", 10);
+
+        assert_eq!(
+            vertical_destination(&dir, &clip).unwrap().file_name().unwrap(),
+            "fight_vertical.mp4"
+        );
+        assert_eq!(
+            trimmed_destination(&dir, &clip).unwrap().file_name().unwrap(),
+            "fight_trimmed.mp4"
+        );
     }
 
     fn temp_dir(tag: &str) -> PathBuf {

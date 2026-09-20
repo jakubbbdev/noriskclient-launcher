@@ -741,6 +741,33 @@ impl CaptureSupervisor {
                     }
                 }
             }
+            CaptureToLauncher::GifExported(exported) => {
+                log::info!(
+                    "GIF written: {} ({}x{}, {} frames, {:.1} MB)",
+                    exported.path.display(),
+                    exported.width,
+                    exported.height,
+                    exported.frames,
+                    exported.size_bytes as f64 / 1e6
+                );
+                track(
+                    "clip_exported_gif",
+                    json!({
+                        "duration_s": tenths(exported.duration_seconds),
+                        "size_mb": megabytes(exported.size_bytes),
+                        "width": exported.width,
+                        "height": exported.height,
+                        "frames": exported.frames,
+                        "truncated": exported.truncated,
+                    }),
+                );
+                if let Some(app) = self.app.read().await.as_ref() {
+                    use tauri::Emitter;
+                    if let Err(e) = app.emit("clip_gif_exported", &exported) {
+                        log::warn!("Could not tell the UI about the GIF: {e}");
+                    }
+                }
+            }
             CaptureToLauncher::ClipTrimmed(trimmed) => {
                 log::info!(
                     "Trimmed clip written: {} ({:.1}s, {:.1} MB)",
