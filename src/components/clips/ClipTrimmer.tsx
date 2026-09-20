@@ -38,9 +38,9 @@ const DEFAULT_BLUR = 12;
 
 type NewOverlay =
   | { kind: "blur"; strength: number }
-  | { kind: "box"; shade: number }
-  | { kind: "arrow"; shade: number; thickness: number; towards: ClipCorner }
-  | { kind: "text"; content: string; size: number; shade: number };
+  | { kind: "box"; colour: number }
+  | { kind: "arrow"; colour: number; thickness: number; towards: ClipCorner }
+  | { kind: "text"; content: string; size: number; colour: number };
 
 const TOOLS: { icon: string; label: string; seed: NewOverlay }[] = [
   {
@@ -51,17 +51,17 @@ const TOOLS: { icon: string; label: string; seed: NewOverlay }[] = [
   {
     icon: "solar:stop-bold",
     label: "clips.editor.tool.box",
-    seed: { kind: "box", shade: 16 },
+    seed: { kind: "box", colour: 0x000000 },
   },
   {
     icon: "solar:arrow-right-up-bold",
     label: "clips.editor.tool.arrow",
-    seed: { kind: "arrow", shade: 235, thickness: 6, towards: "bottom_right" },
+    seed: { kind: "arrow", colour: 0xffffff, thickness: 6, towards: "bottom_right" },
   },
   {
     icon: "solar:text-bold",
     label: "clips.editor.tool.text",
-    seed: { kind: "text", content: "", size: 48, shade: 235 },
+    seed: { kind: "text", content: "", size: 48, colour: 0xffffff },
   },
 ];
 
@@ -73,9 +73,9 @@ const OVERLAY_NAME: Record<ClipOverlay["kind"], string> = {
 };
 
 const SHADES: { value: number; label: string }[] = [
-  { value: 16, label: "clips.editor.overlay.shade.black" },
-  { value: 128, label: "clips.editor.overlay.shade.grey" },
-  { value: 235, label: "clips.editor.overlay.shade.white" },
+  { value: 0x000000, label: "clips.editor.overlay.colour.black" },
+  { value: 0x808080, label: "clips.editor.overlay.colour.grey" },
+  { value: 0xffffff, label: "clips.editor.overlay.colour.white" },
 ];
 
 const CORNERS: { value: ClipCorner; label: string; turn: number }[] = [
@@ -85,8 +85,8 @@ const CORNERS: { value: ClipCorner; label: string; turn: number }[] = [
   { value: "bottom_right", label: "clips.editor.overlay.corner.bottom_right", turn: 90 },
 ];
 
-function grey(shade: number): string {
-  return `rgb(${shade}, ${shade}, ${shade})`;
+function grey(colour: number): string {
+  return `#${colour.toString(16).padStart(6, "0")}`;
 }
 
 type ShapeChoice = ClipShape | "original";
@@ -653,10 +653,10 @@ export function ClipTrimmer({
 
           {picked.kind === "box" && (
             <ShadeChoice
-              label={t("clips.editor.overlay.shade")}
-              value={picked.shade}
+              label={t("clips.editor.overlay.colour")}
+              value={picked.colour}
               disabled={busy}
-              onChange={(shade) => editOverlay(chosen, { shade })}
+              onChange={(colour) => editOverlay(chosen, { colour })}
               t={t}
             />
           )}
@@ -664,10 +664,10 @@ export function ClipTrimmer({
           {picked.kind === "arrow" && (
             <>
               <ShadeChoice
-                label={t("clips.editor.overlay.shade")}
-                value={picked.shade}
+                label={t("clips.editor.overlay.colour")}
+                value={picked.colour}
                 disabled={busy}
-                onChange={(shade) => editOverlay(chosen, { shade })}
+                onChange={(colour) => editOverlay(chosen, { colour })}
                 t={t}
               />
               <PropSlider
@@ -713,10 +713,10 @@ export function ClipTrimmer({
                 onChange={(size) => editOverlay(chosen, { size })}
               />
               <ShadeChoice
-                label={t("clips.editor.overlay.shade")}
-                value={picked.shade}
+                label={t("clips.editor.overlay.colour")}
+                value={picked.colour}
                 disabled={busy}
-                onChange={(shade) => editOverlay(chosen, { shade })}
+                onChange={(colour) => editOverlay(chosen, { colour })}
                 t={t}
               />
               {picked.content.trim() === "" && (
@@ -980,7 +980,7 @@ function ShadeChoice({
   label: string;
   value: number;
   disabled: boolean;
-  onChange: (shade: number) => void;
+  onChange: (colour: number) => void;
   t: (key: string, options?: Record<string, unknown>) => string;
 }) {
   return (
@@ -1065,7 +1065,7 @@ function OverlayArt({ overlay }: { overlay: ClipOverlay }) {
     return (
       <span
         className="pointer-events-none absolute inset-0"
-        style={{ backgroundColor: grey(overlay.shade) }}
+        style={{ backgroundColor: grey(overlay.colour) }}
       />
     );
   }
@@ -1086,7 +1086,7 @@ function OverlayArt({ overlay }: { overlay: ClipOverlay }) {
       >
         <g
           fill="none"
-          stroke={grey(overlay.shade)}
+          stroke={grey(overlay.colour)}
           strokeWidth={overlay.thickness}
           strokeLinecap="round"
         >
@@ -1109,7 +1109,7 @@ function OverlayArt({ overlay }: { overlay: ClipOverlay }) {
         <text
           x={0}
           y={height / 2}
-          fill={grey(overlay.shade)}
+          fill={grey(overlay.colour)}
           fontSize={overlay.size}
           dominantBaseline="middle"
         >

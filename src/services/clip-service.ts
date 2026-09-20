@@ -114,12 +114,12 @@ export interface ClipBlurOverlay extends ClipOverlayBounds {
 
 export interface ClipBoxOverlay extends ClipOverlayBounds {
   kind: "box";
-  shade: number;
+  colour: number;
 }
 
 export interface ClipArrowOverlay extends ClipOverlayBounds {
   kind: "arrow";
-  shade: number;
+  colour: number;
   thickness: number;
   towards: ClipCorner;
 }
@@ -128,7 +128,7 @@ export interface ClipTextOverlay extends ClipOverlayBounds {
   kind: "text";
   content: string;
   size: number;
-  shade: number;
+  colour: number;
 }
 
 export type ClipOverlay =
