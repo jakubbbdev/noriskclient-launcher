@@ -54,7 +54,7 @@ pub fn trim(
         bail!("no frames fall inside {start_seconds:.1}s to {end_seconds:.1}s");
     }
 
-    let audio = windowed_audio(&clip.audio, levels, begin, want_end);
+    let audio = windowed_audio(&clip.audio, levels, clip.first_pts, begin, want_end);
 
     let end_pts = video.last().map(|p| p.pts).unwrap_or(want_end);
     let audio_track = build_audio(&audio, levels)?;
@@ -89,6 +89,7 @@ pub fn trim(
 fn windowed_audio(
     sources: &[AudioSource],
     levels: &[norisk_ipc::TrackLevel],
+    origin: i64,
     begin: i64,
     end: i64,
 ) -> Vec<AudioSource> {
@@ -96,11 +97,16 @@ fn windowed_audio(
         .iter()
         .enumerate()
         .map(|(index, track)| {
-            let ticks = levels
-                .iter()
-                .find(|level| level.stream == index as u32)
+            let level = levels.iter().find(|level| level.stream == index as u32);
+            let ticks = level
                 .map(|level| level.offset_ticks(TIME_BASE_DEN as i64))
                 .unwrap_or(0);
+            let (from, to) = level
+                .map(|level| level.window_ticks(TIME_BASE_DEN as i64, origin))
+                .unwrap_or((None, None));
+
+            let first = from.map(|t| t.max(begin)).unwrap_or(begin);
+            let last = to.map(|t| t.min(end)).unwrap_or(end);
 
             AudioSource {
                 format: track.format.clone(),
@@ -108,8 +114,8 @@ fn windowed_audio(
                     .packets
                     .iter()
                     .filter(|p| {
-                        p.pts >= begin.saturating_sub(ticks)
-                            && p.pts <= end.saturating_sub(ticks)
+                        p.pts >= first.saturating_sub(ticks)
+                            && p.pts <= last.saturating_sub(ticks)
                     })
                     .map(|p| Packet {
                         pts: p.pts.saturating_add(ticks),
@@ -619,26 +625,39 @@ mod tests {
             stream,
             volume,
             offset_seconds: 0.0,
+            start_seconds: None,
+            end_seconds: None,
         }
     }
 
     fn offset(stream: u32, offset_seconds: f64) -> norisk_ipc::TrackLevel {
         norisk_ipc::TrackLevel {
-            stream,
-            volume: 100,
             offset_seconds,
+            ..level(stream, 100)
+        }
+    }
+
+    fn window(stream: u32, start: Option<f64>, end: Option<f64>) -> norisk_ipc::TrackLevel {
+        norisk_ipc::TrackLevel {
+            start_seconds: start,
+            end_seconds: end,
+            ..level(stream, 100)
         }
     }
 
     const PACKET: i64 = 1_920;
+
+    fn as_seconds(ticks: i64) -> f64 {
+        ticks as f64 / TIME_BASE_DEN as f64
+    }
 
     #[test]
     fn a_zero_offset_leaves_the_packets_exactly_where_no_offset_leaves_them() {
         let sources = vec![source("Mix", 10), source("Game", 10)];
         let end = 9 * PACKET;
 
-        let without = windowed_audio(&sources, &[], 0, end);
-        let zero = windowed_audio(&sources, &[offset(0, 0.0), offset(1, 0.0)], 0, end);
+        let without = windowed_audio(&sources, &[], 0, 0, end);
+        let zero = windowed_audio(&sources, &[offset(0, 0.0), offset(1, 0.0)], 0, 0, end);
 
         for (index, (a, b)) in without.iter().zip(&zero).enumerate() {
             assert_eq!(a.packets, b.packets, "track {index} moved");
@@ -650,7 +669,7 @@ mod tests {
     fn a_positive_offset_moves_that_track_later_by_the_ticks_it_asks_for() {
         let sources = vec![source("Mix", 10)];
 
-        let shifted = windowed_audio(&sources, &[offset(0, 0.25)], 0, 100 * PACKET);
+        let shifted = windowed_audio(&sources, &[offset(0, 0.25)], 0, 0, 100 * PACKET);
 
         let ticks = TIME_BASE_DEN as i64 / 4;
         assert_eq!(shifted[0].packets[0].pts, sources[0].packets[0].pts + ticks);
@@ -662,7 +681,7 @@ mod tests {
         let begin = 0;
         let sources = vec![source("Mix", 10)];
 
-        let shifted = windowed_audio(&sources, &[offset(0, -0.05)], begin, 9 * PACKET);
+        let shifted = windowed_audio(&sources, &[offset(0, -0.05)], 0, begin, 9 * PACKET);
 
         assert!(!shifted[0].packets.is_empty(), "the whole track was thrown away");
         assert!(
@@ -679,7 +698,7 @@ mod tests {
         let sources = vec![source("Mix", 10), source("Game", 10), source("Microphone", 10)];
         let end = 100 * PACKET;
 
-        let shifted = windowed_audio(&sources, &[offset(1, 0.1)], 0, end);
+        let shifted = windowed_audio(&sources, &[offset(1, 0.1)], 0, 0, end);
 
         assert_eq!(shifted[0].packets, sources[0].packets);
         assert_eq!(shifted[2].packets, sources[2].packets);
@@ -695,7 +714,7 @@ mod tests {
         let end = 9 * PACKET;
 
         for seconds in [600.0, -600.0, f64::MAX, f64::MIN] {
-            let shifted = windowed_audio(&sources, &[offset(0, seconds)], 0, end);
+            let shifted = windowed_audio(&sources, &[offset(0, seconds)], 0, 0, end);
             assert!(
                 shifted[0].packets.is_empty(),
                 "{seconds} should push the whole track out of the range"
@@ -708,11 +727,158 @@ mod tests {
         let sources = vec![source("Mix", 10)];
         let end = 9 * PACKET;
 
-        let kept = windowed_audio(&sources, &[offset(0, 0.0)], 0, end)[0].packets.len();
-        let shifted = windowed_audio(&sources, &[offset(0, PACKET as f64 * 3.0 / TIME_BASE_DEN as f64)], 0, end);
+        let kept = windowed_audio(&sources, &[offset(0, 0.0)], 0, 0, end)[0].packets.len();
+        let shifted = windowed_audio(&sources, &[offset(0, as_seconds(PACKET * 3))], 0, 0, end);
 
         assert_eq!(shifted[0].packets.len(), kept - 3);
         assert!(shifted[0].packets.iter().all(|p| p.pts <= end));
+    }
+
+    #[test]
+    fn a_track_with_no_window_of_its_own_follows_the_clip() {
+        let sources = vec![source("Mix", 10), source("Game", 10)];
+        let end = 9 * PACKET;
+
+        let without = windowed_audio(&sources, &[], 0, 0, end);
+        let empty_window = windowed_audio(
+            &sources,
+            &[window(0, None, None), window(1, None, None)],
+            0,
+            0,
+            end,
+        );
+
+        for (index, (a, b)) in without.iter().zip(&empty_window).enumerate() {
+            assert_eq!(a.packets, b.packets, "track {index} moved");
+            assert_eq!(
+                a.packets, sources[index].packets,
+                "track {index} was rewritten"
+            );
+        }
+    }
+
+    #[test]
+    fn a_later_start_of_its_own_drops_that_tracks_earlier_packets() {
+        let sources = vec![source("Mix", 10)];
+        let end = 9 * PACKET;
+
+        let cut = windowed_audio(
+            &sources,
+            &[window(0, Some(as_seconds(3 * PACKET)), None)],
+            0,
+            0,
+            end,
+        );
+
+        assert_eq!(cut[0].packets.as_slice(), &sources[0].packets[3..]);
+    }
+
+    #[test]
+    fn an_earlier_end_of_its_own_drops_that_tracks_later_packets() {
+        let sources = vec![source("Mix", 10)];
+        let end = 9 * PACKET;
+
+        let cut = windowed_audio(
+            &sources,
+            &[window(0, None, Some(as_seconds(5 * PACKET)))],
+            0,
+            0,
+            end,
+        );
+
+        assert_eq!(cut[0].packets.as_slice(), &sources[0].packets[..=5]);
+    }
+
+    #[test]
+    fn a_window_wider_than_the_clip_is_clamped_rather_than_resurrecting_audio() {
+        let sources = vec![source("Mix", 10)];
+        let (begin, end) = (2 * PACKET, 6 * PACKET);
+
+        let clip = windowed_audio(&sources, &[], 0, begin, end);
+        let greedy = windowed_audio(&sources, &[window(0, Some(-100.0), Some(100.0))], 0, begin, end);
+
+        assert_eq!(greedy[0].packets, clip[0].packets);
+        assert!(greedy[0].packets.iter().all(|p| p.pts >= begin && p.pts <= end));
+    }
+
+    #[test]
+    fn a_window_on_one_track_leaves_the_other_tracks_alone() {
+        let sources = vec![source("Mix", 10), source("Game", 10), source("Microphone", 10)];
+        let end = 9 * PACKET;
+
+        let cut = windowed_audio(
+            &sources,
+            &[window(1, Some(as_seconds(4 * PACKET)), Some(as_seconds(6 * PACKET)))],
+            0,
+            0,
+            end,
+        );
+
+        assert_eq!(cut[0].packets, sources[0].packets);
+        assert_eq!(cut[2].packets, sources[2].packets);
+        assert_eq!(cut[1].packets.as_slice(), &sources[1].packets[4..=6]);
+    }
+
+    #[test]
+    fn a_window_that_makes_no_sense_empties_the_track_rather_than_panicking() {
+        let sources = vec![source("Mix", 10)];
+        let end = 9 * PACKET;
+
+        let backwards = windowed_audio(
+            &sources,
+            &[window(0, Some(as_seconds(8 * PACKET)), Some(as_seconds(2 * PACKET)))],
+            0,
+            0,
+            end,
+        );
+        assert!(backwards[0].packets.is_empty());
+
+        let enormous = windowed_audio(
+            &sources,
+            &[window(0, Some(f64::MAX), Some(f64::MIN))],
+            0,
+            0,
+            end,
+        );
+        assert!(enormous[0].packets.is_empty());
+
+        for nonsense in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let ignored = windowed_audio(
+                &sources,
+                &[window(0, Some(nonsense), Some(nonsense))],
+                0,
+                0,
+                end,
+            );
+            assert_eq!(
+                ignored[0].packets, sources[0].packets,
+                "{nonsense} should count as no window at all"
+            );
+        }
+    }
+
+    #[test]
+    fn a_window_is_read_in_the_finished_clip_so_it_measures_the_track_after_its_shift() {
+        let sources = vec![source("Mix", 10)];
+        let end = 9 * PACKET;
+
+        let both = windowed_audio(
+            &sources,
+            &[norisk_ipc::TrackLevel {
+                offset_seconds: as_seconds(2 * PACKET),
+                start_seconds: Some(as_seconds(4 * PACKET)),
+                end_seconds: None,
+                ..level(0, 100)
+            }],
+            0,
+            0,
+            end,
+        );
+
+        assert_eq!(both[0].packets.len(), 6);
+        assert_eq!(both[0].packets[0].pts, 4 * PACKET);
+        assert_eq!(both[0].packets[0].dts, 4 * PACKET);
+        assert!(both[0].packets.iter().all(|p| p.pts >= 0 && p.pts <= end));
     }
 
     #[test]
