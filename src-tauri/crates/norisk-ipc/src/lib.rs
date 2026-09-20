@@ -592,6 +592,52 @@ mod tests {
     }
 
     #[test]
+    fn a_level_sent_without_an_offset_still_parses_and_sits_still() {
+        let level: TrackLevel = serde_json::from_str(r#"{"stream":2,"volume":80}"#).unwrap();
+
+        assert_eq!(level.offset_seconds, 0.0);
+        assert_eq!(level.offset_ticks(90_000), 0);
+    }
+
+    #[test]
+    fn an_offset_on_its_own_counts_as_a_change() {
+        let still = TrackLevel {
+            stream: 1,
+            volume: 100,
+            offset_seconds: 0.0,
+        };
+        assert!(!levels_change_anything(&[still]));
+        assert!(levels_change_anything(&[TrackLevel {
+            offset_seconds: 0.25,
+            ..still
+        }]));
+        assert!(levels_change_anything(&[TrackLevel {
+            offset_seconds: -0.25,
+            ..still
+        }]));
+        assert!(levels_change_anything(&[TrackLevel {
+            volume: 50,
+            ..still
+        }]));
+    }
+
+    #[test]
+    fn an_offset_becomes_ticks_and_nonsense_becomes_nothing() {
+        let at = |offset_seconds| TrackLevel {
+            stream: 0,
+            volume: 100,
+            offset_seconds,
+        };
+
+        assert_eq!(at(0.25).offset_ticks(90_000), 22_500);
+        assert_eq!(at(-0.25).offset_ticks(90_000), -22_500);
+        assert_eq!(at(f64::NAN).offset_ticks(90_000), 0);
+        assert_eq!(at(f64::INFINITY).offset_ticks(90_000), 0);
+        assert_eq!(at(f64::NEG_INFINITY).offset_ticks(90_000), 0);
+        assert!(!levels_change_anything(&[at(f64::NAN)]));
+    }
+
+    #[test]
     fn clip_reason_produces_a_filename_safe_slug() {
         assert_eq!(ClipReason::Manual.slug(), "clip");
         assert_eq!(ClipReason::Event("PLAYER_KILL".into()).slug(), "player_kill");
@@ -650,20 +696,31 @@ pub struct TrimClipRequest {
     pub levels: Vec<TrackLevel>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct TrackLevel {
     pub stream: u32,
     pub volume: u32,
+    #[serde(default)]
+    pub offset_seconds: f64,
 }
 
 impl TrackLevel {
     pub fn gain(&self) -> f32 {
         self.volume.min(200) as f32 / 100.0
     }
+
+    pub fn offset_ticks(&self, ticks_per_second: i64) -> i64 {
+        if !self.offset_seconds.is_finite() {
+            return 0;
+        }
+        (self.offset_seconds * ticks_per_second as f64) as i64
+    }
 }
 
 pub fn levels_change_anything(levels: &[TrackLevel]) -> bool {
-    levels.iter().any(|level| level.volume != 100)
+    levels
+        .iter()
+        .any(|level| level.volume != 100 || (level.offset_seconds.is_finite() && level.offset_seconds != 0.0))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
