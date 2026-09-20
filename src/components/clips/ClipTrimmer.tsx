@@ -587,6 +587,50 @@ export function ClipTrimmer({
 
   const shapeLabel = SHAPES.find((entry) => entry.choice === shape)?.label ?? SHAPES[0].label;
 
+  const clipMasks = (
+    <>
+      <div
+        className="absolute inset-y-0 left-0 bg-black/70"
+        style={{ width: `${percent(start)}%` }}
+      />
+      <div
+        className="absolute inset-y-0 right-0 bg-black/70"
+        style={{ width: `${100 - percent(end)}%` }}
+      />
+      <div
+        className="absolute inset-y-0 border-x-2"
+        style={{
+          left: `${percent(start)}%`,
+          width: `${percent(kept)}%`,
+          borderColor: accentColor.value,
+        }}
+      />
+    </>
+  );
+
+  const clipHandles = (
+    <>
+      <Handle
+        left={percent(start)}
+        active={dragging === "start"}
+        time={formatTime(start)}
+        label={t("clips.trim.handle_start")}
+        color={accentColor.value}
+        onGrab={() => setDragging("start")}
+        onNudge={(by) => moveHandle("start", start + by)}
+      />
+      <Handle
+        left={percent(end)}
+        active={dragging === "end"}
+        time={formatTime(end)}
+        label={t("clips.trim.handle_end")}
+        color={accentColor.value}
+        onGrab={() => setDragging("end")}
+        onNudge={(by) => moveHandle("end", end + by)}
+      />
+    </>
+  );
+
   return (
     <div className="fixed inset-0 z-[1000] flex bg-black/70 p-4 backdrop-blur-md-anyos">
       <div
@@ -1111,6 +1155,13 @@ export function ClipTrimmer({
                 <Icon icon="svg-spinners:ring-resize" className="h-4 w-4 text-white/40" />
               </div>
             )}
+
+            {separate && (
+              <div className="pointer-events-none absolute inset-0 z-10">
+                {clipMasks}
+                {clipHandles}
+              </div>
+            )}
           </Lane>
 
           {drawn.map((track) => {
@@ -1180,45 +1231,13 @@ export function ClipTrimmer({
           ))}
 
           <div className="pointer-events-none absolute inset-y-0 left-44 right-0">
-            <div
-              className="absolute inset-y-0 left-0 bg-black/70"
-              style={{ width: `${percent(start)}%` }}
-            />
-            <div
-              className="absolute inset-y-0 right-0 bg-black/70"
-              style={{ width: `${100 - percent(end)}%` }}
-            />
-            <div
-              className="absolute inset-y-0 border-x-2"
-              style={{
-                left: `${percent(start)}%`,
-                width: `${percent(kept)}%`,
-                borderColor: accentColor.value,
-              }}
-            />
+            {!separate && clipMasks}
             <div
               className="absolute inset-y-0 w-px bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]"
               style={{ left: `${percent(playhead)}%` }}
             />
 
-            <Handle
-              left={percent(start)}
-              active={dragging === "start"}
-              time={formatTime(start)}
-              label={t("clips.trim.handle_start")}
-              color={accentColor.value}
-              onGrab={() => setDragging("start")}
-              onNudge={(by) => moveHandle("start", start + by)}
-            />
-            <Handle
-              left={percent(end)}
-              active={dragging === "end"}
-              time={formatTime(end)}
-              label={t("clips.trim.handle_end")}
-              color={accentColor.value}
-              onGrab={() => setDragging("end")}
-              onNudge={(by) => moveHandle("end", end + by)}
-            />
+            {!separate && clipHandles}
           </div>
         </div>
 
