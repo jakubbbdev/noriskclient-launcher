@@ -54,19 +54,7 @@ pub fn trim(
         bail!("no frames fall inside {start_seconds:.1}s to {end_seconds:.1}s");
     }
 
-    let audio: Vec<AudioSource> = clip
-        .audio
-        .iter()
-        .map(|track| AudioSource {
-            format: track.format.clone(),
-            packets: track
-                .packets
-                .iter()
-                .filter(|p| p.pts >= begin && p.pts <= want_end)
-                .cloned()
-                .collect(),
-        })
-        .collect();
+    let audio = windowed_audio(&clip.audio, levels, begin, want_end);
 
     let end_pts = video.last().map(|p| p.pts).unwrap_or(want_end);
     let audio_track = build_audio(&audio, levels)?;
@@ -96,6 +84,42 @@ pub fn trim(
         start_seconds: (want_start.max(begin) - clip.first_pts) as f64 / TIME_BASE_DEN as f64,
         end_seconds: (end_pts - clip.first_pts) as f64 / TIME_BASE_DEN as f64,
     })
+}
+
+fn windowed_audio(
+    sources: &[AudioSource],
+    levels: &[norisk_ipc::TrackLevel],
+    begin: i64,
+    end: i64,
+) -> Vec<AudioSource> {
+    sources
+        .iter()
+        .enumerate()
+        .map(|(index, track)| {
+            let ticks = levels
+                .iter()
+                .find(|level| level.stream == index as u32)
+                .map(|level| level.offset_ticks(TIME_BASE_DEN as i64))
+                .unwrap_or(0);
+
+            AudioSource {
+                format: track.format.clone(),
+                packets: track
+                    .packets
+                    .iter()
+                    .filter(|p| {
+                        p.pts >= begin.saturating_sub(ticks)
+                            && p.pts <= end.saturating_sub(ticks)
+                    })
+                    .map(|p| Packet {
+                        pts: p.pts.saturating_add(ticks),
+                        dts: p.dts.saturating_add(ticks),
+                        ..p.clone()
+                    })
+                    .collect(),
+            }
+        })
+        .collect()
 }
 
 #[cfg(windows)]
@@ -591,7 +615,104 @@ mod tests {
     }
 
     fn level(stream: u32, volume: u32) -> norisk_ipc::TrackLevel {
-        norisk_ipc::TrackLevel { stream, volume }
+        norisk_ipc::TrackLevel {
+            stream,
+            volume,
+            offset_seconds: 0.0,
+        }
+    }
+
+    fn offset(stream: u32, offset_seconds: f64) -> norisk_ipc::TrackLevel {
+        norisk_ipc::TrackLevel {
+            stream,
+            volume: 100,
+            offset_seconds,
+        }
+    }
+
+    const PACKET: i64 = 1_920;
+
+    #[test]
+    fn a_zero_offset_leaves_the_packets_exactly_where_no_offset_leaves_them() {
+        let sources = vec![source("Mix", 10), source("Game", 10)];
+        let end = 9 * PACKET;
+
+        let without = windowed_audio(&sources, &[], 0, end);
+        let zero = windowed_audio(&sources, &[offset(0, 0.0), offset(1, 0.0)], 0, end);
+
+        for (index, (a, b)) in without.iter().zip(&zero).enumerate() {
+            assert_eq!(a.packets, b.packets, "track {index} moved");
+            assert_eq!(a.packets, sources[index].packets, "track {index} was rewritten");
+        }
+    }
+
+    #[test]
+    fn a_positive_offset_moves_that_track_later_by_the_ticks_it_asks_for() {
+        let sources = vec![source("Mix", 10)];
+
+        let shifted = windowed_audio(&sources, &[offset(0, 0.25)], 0, 100 * PACKET);
+
+        let ticks = TIME_BASE_DEN as i64 / 4;
+        assert_eq!(shifted[0].packets[0].pts, sources[0].packets[0].pts + ticks);
+        assert_eq!(shifted[0].packets[0].dts, sources[0].packets[0].dts + ticks);
+    }
+
+    #[test]
+    fn a_negative_offset_never_emits_a_timestamp_before_the_cut() {
+        let begin = 0;
+        let sources = vec![source("Mix", 10)];
+
+        let shifted = windowed_audio(&sources, &[offset(0, -0.05)], begin, 9 * PACKET);
+
+        assert!(!shifted[0].packets.is_empty(), "the whole track was thrown away");
+        assert!(
+            shifted[0]
+                .packets
+                .iter()
+                .all(|p| p.pts >= begin && p.dts >= begin),
+            "a packet landed before the start of the cut"
+        );
+    }
+
+    #[test]
+    fn an_offset_moves_only_the_track_it_names() {
+        let sources = vec![source("Mix", 10), source("Game", 10), source("Microphone", 10)];
+        let end = 100 * PACKET;
+
+        let shifted = windowed_audio(&sources, &[offset(1, 0.1)], 0, end);
+
+        assert_eq!(shifted[0].packets, sources[0].packets);
+        assert_eq!(shifted[2].packets, sources[2].packets);
+        assert_eq!(
+            shifted[1].packets[0].pts,
+            sources[1].packets[0].pts + TIME_BASE_DEN as i64 / 10
+        );
+    }
+
+    #[test]
+    fn an_offset_bigger_than_the_clip_empties_that_track_rather_than_panicking() {
+        let sources = vec![source("Mix", 10)];
+        let end = 9 * PACKET;
+
+        for seconds in [600.0, -600.0, f64::MAX, f64::MIN] {
+            let shifted = windowed_audio(&sources, &[offset(0, seconds)], 0, end);
+            assert!(
+                shifted[0].packets.is_empty(),
+                "{seconds} should push the whole track out of the range"
+            );
+        }
+    }
+
+    #[test]
+    fn an_offset_that_runs_past_the_end_is_cut_instead_of_growing_the_file() {
+        let sources = vec![source("Mix", 10)];
+        let end = 9 * PACKET;
+
+        let kept = windowed_audio(&sources, &[offset(0, 0.0)], 0, end)[0].packets.len();
+        let shifted = windowed_audio(&sources, &[offset(0, PACKET as f64 * 3.0 / TIME_BASE_DEN as f64)], 0, end);
+
+        assert_eq!(shifted[0].packets.len(), kept - 3);
+        assert!(shifted[0].packets.iter().all(|p| p.pts <= end));
     }
 
     #[test]
