@@ -204,6 +204,7 @@ export async function getClipDetails(path: string): Promise<ClipDetails | null> 
 export interface TrackLevel {
   stream: number;
   volume: number;
+  offsetSeconds: number;
 }
 
 export async function trimClip(
@@ -212,7 +213,16 @@ export async function trimClip(
   endSeconds: number,
   levels?: TrackLevel[],
 ): Promise<string> {
-  return invoke<string>("clip_trim", { path, startSeconds, endSeconds, levels });
+  return invoke<string>("clip_trim", {
+    path,
+    startSeconds,
+    endSeconds,
+    levels: levels?.map((level) => ({
+      stream: level.stream,
+      volume: level.volume,
+      offset_seconds: level.offsetSeconds,
+    })),
+  });
 }
 
 export type CapturePermission = "screen_recording" | "microphone" | "input_monitoring";

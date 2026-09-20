@@ -137,6 +137,12 @@ interface BarDrag {
   endSeconds: number;
 }
 
+interface LaneDrag {
+  stream: number;
+  fromX: number;
+  offsetSeconds: number;
+}
+
 type ExportStage =
   | { kind: "idle" }
   | { kind: "running"; done: number; total: number }
@@ -187,21 +193,29 @@ export function ClipTrimmer({
   const [panel, setPanel] = useState<Panel>("tools");
   const [boxDrag, setBoxDrag] = useState<BoxDrag | null>(null);
   const [barDrag, setBarDrag] = useState<BarDrag | null>(null);
+  const [laneDrag, setLaneDrag] = useState<LaneDrag | null>(null);
   const [stage, setStage] = useState<ExportStage>({ kind: "idle" });
 
   const lanes = useMemo(() => details?.audioTracks ?? [], [details]);
   const adjustable = useMemo(() => lanes.filter((track) => track.adjustable), [lanes]);
 
   const [volumes, setVolumes] = useState<Record<number, number>>({});
+  const [offsets, setOffsets] = useState<Record<number, number>>({});
   useEffect(() => {
     setVolumes(Object.fromEntries(adjustable.map((track) => [track.stream, 100])));
+    setOffsets(Object.fromEntries(adjustable.map((track) => [track.stream, 0])));
   }, [adjustable]);
 
   const levels: TrackLevel[] = useMemo(
-    () => adjustable.map((track) => ({ stream: track.stream, volume: volumes[track.stream] ?? 100 })),
-    [adjustable, volumes],
+    () =>
+      adjustable.map((track) => ({
+        stream: track.stream,
+        volume: volumes[track.stream] ?? 100,
+        offsetSeconds: offsets[track.stream] ?? 0,
+      })),
+    [adjustable, offsets, volumes],
   );
-  const rebalanced = levels.some((level) => level.volume !== 100);
+  const rebalanced = levels.some((level) => level.volume !== 100 || level.offsetSeconds !== 0);
 
   const previewState = useTrimPreview({
     path,
@@ -386,6 +400,30 @@ export function ClipTrimmer({
       window.removeEventListener("pointerup", up);
     };
   }, [barDrag, duration, editOverlay]);
+
+  const shiftTrack = useCallback(
+    (stream: number, seconds: number) => {
+      setOffsets((current) => ({ ...current, [stream]: tidy(clamp(seconds, -duration, duration)) }));
+    },
+    [duration],
+  );
+
+  useEffect(() => {
+    if (!laneDrag) return;
+    const move = (event: PointerEvent) => {
+      const rect = scaleRef.current?.getBoundingClientRect();
+      if (!rect || rect.width === 0 || duration <= 0) return;
+      const by = ((event.clientX - laneDrag.fromX) / rect.width) * duration;
+      shiftTrack(laneDrag.stream, laneDrag.offsetSeconds + by);
+    };
+    const up = () => setLaneDrag(null);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  }, [duration, laneDrag, shiftTrack]);
 
   useEffect(() => {
     let stop: (() => void) | undefined;
@@ -657,7 +695,7 @@ export function ClipTrimmer({
                 </>
               )}
               <p className="font-minecraft text-xs leading-relaxed text-white/40">
-                {t("clips.editor.audio.locked")}
+                {t("clips.editor.audio.shift")}
               </p>
             </>
           )}
@@ -989,11 +1027,22 @@ export function ClipTrimmer({
               track={track}
               name={trackName(track.label, t)}
               volume={track.adjustable ? (volumes[track.stream] ?? 100) : 100}
+              offset={track.adjustable ? (offsets[track.stream] ?? 0) : 0}
+              duration={duration}
               tone={accentColor.light}
               disabled={busy}
               onChange={(volume) =>
                 setVolumes((current) => ({ ...current, [track.stream]: volume }))
               }
+              onGrab={(event) =>
+                setLaneDrag({
+                  stream: track.stream,
+                  fromX: event.clientX,
+                  offsetSeconds: offsets[track.stream] ?? 0,
+                })
+              }
+              onNudge={(by) => shiftTrack(track.stream, (offsets[track.stream] ?? 0) + by)}
+              onReset={() => shiftTrack(track.stream, 0)}
               t={t}
             />
           ))}
@@ -1194,20 +1243,32 @@ function AudioLane({
   track,
   name,
   volume,
+  offset,
+  duration,
   tone,
   disabled,
   onChange,
+  onGrab,
+  onNudge,
+  onReset,
   t,
 }: {
   track: ClipAudioTrack;
   name: string;
   volume: number;
+  offset: number;
+  duration: number;
   tone: string;
   disabled: boolean;
   onChange: (volume: number) => void;
+  onGrab: (event: { clientX: number }) => void;
+  onNudge: (by: number) => void;
+  onReset: () => void;
   t: Translate;
 }) {
   const muted = volume === 0;
+  const shiftable = track.adjustable && !disabled;
+  const shift = (offset / (duration > 0 ? duration : 1)) * 100;
 
   return (
     <Lane
@@ -1240,7 +1301,44 @@ function AudioLane({
         ) : undefined
       }
     >
-      <Waveform peaks={track.peaks} gain={volume / 100} muted={muted} />
+      <div
+        className="absolute inset-0"
+        style={offset === 0 ? undefined : { transform: `translateX(${shift}%)` }}
+      >
+        <Waveform peaks={track.peaks} gain={volume / 100} muted={muted} />
+      </div>
+
+      {shiftable && (
+        <button
+          type="button"
+          aria-label={t("clips.editor.audio.offset_shift", { name })}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            onGrab(event);
+          }}
+          onDoubleClick={onReset}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            const step = event.shiftKey ? NUDGE * 10 : NUDGE;
+            onNudge(event.key === "ArrowLeft" ? -step : step);
+          }}
+          className="absolute inset-0 cursor-grab focus:outline-none focus-visible:ring-1 focus-visible:ring-white/60"
+        />
+      )}
+
+      {shiftable && offset !== 0 && (
+        <button
+          type="button"
+          title={t("clips.editor.audio.offset_reset")}
+          aria-label={t("clips.editor.audio.offset_reset")}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={onReset}
+          className="absolute right-1 top-1 rounded border border-white/20 bg-black/70 px-1.5 py-0.5 font-minecraft text-[0.7rem] tabular-nums text-white transition-colors hover:border-white/60"
+        >
+          {formatOffset(offset)}
+        </button>
+      )}
     </Lane>
   );
 }
@@ -1718,6 +1816,14 @@ function overlayTint(overlay: ClipOverlay, fallback: string): string {
 
 function clamp(value: number, low: number, high: number): number {
   return Math.max(low, Math.min(value, Math.max(low, high)));
+}
+
+function tidy(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+function formatOffset(seconds: number): string {
+  return `${seconds > 0 ? "+" : "−"}${Number(Math.abs(seconds).toFixed(2))} s`;
 }
 
 function samePath(a: string, b: string): boolean {
