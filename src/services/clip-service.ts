@@ -96,9 +96,9 @@ export interface ExportedClip {
 
 export type ClipShape = "vertical" | "square" | "wide";
 
-export interface ClipBlurOverlay {
-  kind: "blur";
-  strength: number;
+export type ClipCorner = "top_left" | "top_right" | "bottom_left" | "bottom_right";
+
+export interface ClipOverlayBounds {
   left: number;
   top: number;
   width: number;
@@ -107,7 +107,35 @@ export interface ClipBlurOverlay {
   endSeconds: number;
 }
 
-export type ClipOverlay = ClipBlurOverlay;
+export interface ClipBlurOverlay extends ClipOverlayBounds {
+  kind: "blur";
+  strength: number;
+}
+
+export interface ClipBoxOverlay extends ClipOverlayBounds {
+  kind: "box";
+  shade: number;
+}
+
+export interface ClipArrowOverlay extends ClipOverlayBounds {
+  kind: "arrow";
+  shade: number;
+  thickness: number;
+  towards: ClipCorner;
+}
+
+export interface ClipTextOverlay extends ClipOverlayBounds {
+  kind: "text";
+  content: string;
+  size: number;
+  shade: number;
+}
+
+export type ClipOverlay =
+  | ClipBlurOverlay
+  | ClipBoxOverlay
+  | ClipArrowOverlay
+  | ClipTextOverlay;
 
 export async function exportVertical(
   path: string,

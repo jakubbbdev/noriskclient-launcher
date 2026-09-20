@@ -4,10 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@iconify/react";
 
 import { Button } from "../ui/buttons/Button";
+import { Input } from "../ui/Input";
 import { RangeSlider } from "../ui/RangeSlider";
 import { useThemeStore } from "../../store/useThemeStore";
 import {
   exportVertical,
+  type ClipCorner,
   type ClipDetails,
   type ClipOverlay,
   type ClipShape,
@@ -33,6 +35,59 @@ const NUDGE = 0.1;
 const MIN_BOX = 0.05;
 
 const DEFAULT_BLUR = 12;
+
+type NewOverlay =
+  | { kind: "blur"; strength: number }
+  | { kind: "box"; shade: number }
+  | { kind: "arrow"; shade: number; thickness: number; towards: ClipCorner }
+  | { kind: "text"; content: string; size: number; shade: number };
+
+const TOOLS: { icon: string; label: string; seed: NewOverlay }[] = [
+  {
+    icon: "solar:magic-stick-bold",
+    label: "clips.editor.tool.blur",
+    seed: { kind: "blur", strength: DEFAULT_BLUR },
+  },
+  {
+    icon: "solar:stop-bold",
+    label: "clips.editor.tool.box",
+    seed: { kind: "box", shade: 16 },
+  },
+  {
+    icon: "solar:arrow-right-up-bold",
+    label: "clips.editor.tool.arrow",
+    seed: { kind: "arrow", shade: 235, thickness: 6, towards: "bottom_right" },
+  },
+  {
+    icon: "solar:text-bold",
+    label: "clips.editor.tool.text",
+    seed: { kind: "text", content: "", size: 48, shade: 235 },
+  },
+];
+
+const OVERLAY_NAME: Record<ClipOverlay["kind"], string> = {
+  blur: "clips.editor.overlay.name",
+  box: "clips.editor.overlay.name_box",
+  arrow: "clips.editor.overlay.name_arrow",
+  text: "clips.editor.overlay.name_text",
+};
+
+const SHADES: { value: number; label: string }[] = [
+  { value: 16, label: "clips.editor.overlay.shade.black" },
+  { value: 128, label: "clips.editor.overlay.shade.grey" },
+  { value: 235, label: "clips.editor.overlay.shade.white" },
+];
+
+const CORNERS: { value: ClipCorner; label: string; turn: number }[] = [
+  { value: "top_left", label: "clips.editor.overlay.corner.top_left", turn: -90 },
+  { value: "top_right", label: "clips.editor.overlay.corner.top_right", turn: 0 },
+  { value: "bottom_left", label: "clips.editor.overlay.corner.bottom_left", turn: 180 },
+  { value: "bottom_right", label: "clips.editor.overlay.corner.bottom_right", turn: 90 },
+];
+
+function grey(shade: number): string {
+  return `rgb(${shade}, ${shade}, ${shade})`;
+}
 
 type ShapeChoice = ClipShape | "original";
 
@@ -191,26 +246,30 @@ export function ClipTrimmer({
 
   const editOverlay = useCallback((index: number, patch: Partial<ClipOverlay>) => {
     setOverlays((current) =>
-      current.map((overlay, at) => (at === index ? { ...overlay, ...patch } : overlay)),
+      current.map((overlay, at) =>
+        at === index ? ({ ...overlay, ...patch } as ClipOverlay) : overlay,
+      ),
     );
   }, []);
 
-  const addBlur = useCallback(() => {
-    setOverlays((current) => [
-      ...current,
-      {
-        kind: "blur",
-        strength: DEFAULT_BLUR,
-        left: 0.25,
-        top: 0.25,
-        width: 0.5,
-        height: 0.5,
-        startSeconds: start,
-        endSeconds: end,
-      },
-    ]);
-    setChosen(overlays.length);
-  }, [end, overlays.length, start]);
+  const addOverlay = useCallback(
+    (seed: NewOverlay) => {
+      setOverlays((current) => [
+        ...current,
+        {
+          ...seed,
+          left: 0.25,
+          top: 0.25,
+          width: 0.5,
+          height: 0.5,
+          startSeconds: start,
+          endSeconds: end,
+        },
+      ]);
+      setChosen(overlays.length);
+    },
+    [end, overlays.length, start],
+  );
 
   const dropOverlay = useCallback((index: number) => {
     setOverlays((current) => current.filter((_, at) => at !== index));
@@ -366,12 +425,15 @@ export function ClipTrimmer({
           <span className="font-smallcaps text-[0.65rem] uppercase tracking-wider text-white/40">
             {t("clips.editor.tools")}
           </span>
-          <ClipIconButton
-            icon="solar:magic-stick-bold"
-            label={t("clips.editor.tool.blur")}
-            onClick={addBlur}
-            disabled={busy}
-          />
+          {TOOLS.map((tool) => (
+            <ClipIconButton
+              key={tool.seed.kind}
+              icon={tool.icon}
+              label={t(tool.label)}
+              onClick={() => addOverlay(tool.seed)}
+              disabled={busy}
+            />
+          ))}
         </div>
 
         <div
@@ -426,7 +488,7 @@ export function ClipTrimmer({
               overlay={overlay}
               active={chosen === index}
               color={accentColor.value}
-              label={t("clips.editor.overlay.name", { index: index + 1 })}
+              label={t(OVERLAY_NAME[overlay.kind], { index: index + 1 })}
               onPick={() => setChosen(index)}
               onGrab={(mode, event) => {
                 setChosen(index);
@@ -554,7 +616,7 @@ export function ClipTrimmer({
                 duration={duration}
                 active={chosen === index}
                 color={accentColor.value}
-                name={t("clips.editor.overlay.name", { index: index + 1 })}
+                name={t(OVERLAY_NAME[overlay.kind], { index: index + 1 })}
                 onPick={() => setChosen(index)}
                 onGrab={(mode, event) => {
                   setChosen(index);
@@ -577,28 +639,94 @@ export function ClipTrimmer({
       </div>
 
       {picked !== null && chosen !== null && (
-        <div className="flex items-center gap-4 rounded-lg bg-black/20 border border-white/10 px-4 py-3">
-          <span className="w-28 shrink-0 truncate font-minecraft text-sm text-white/80">
-            {t("clips.editor.overlay.strength")}
-          </span>
-
-          <div className="min-w-0 flex-1">
-            <RangeSlider
+        <div className="flex flex-wrap items-center gap-4 rounded-lg bg-black/20 border border-white/10 px-4 py-3">
+          {picked.kind === "blur" && (
+            <PropSlider
+              label={t("clips.editor.overlay.strength")}
               value={picked.strength}
-              onChange={(strength) => editOverlay(chosen, { strength })}
               min={1}
               max={64}
-              step={1}
-              size="sm"
-              showValue={false}
               disabled={busy}
-              label={t("clips.editor.overlay.strength")}
+              onChange={(strength) => editOverlay(chosen, { strength })}
             />
-          </div>
+          )}
 
-          <span className="w-10 shrink-0 text-right font-minecraft text-sm text-white">
-            {picked.strength}
-          </span>
+          {picked.kind === "box" && (
+            <ShadeChoice
+              label={t("clips.editor.overlay.shade")}
+              value={picked.shade}
+              disabled={busy}
+              onChange={(shade) => editOverlay(chosen, { shade })}
+              t={t}
+            />
+          )}
+
+          {picked.kind === "arrow" && (
+            <>
+              <ShadeChoice
+                label={t("clips.editor.overlay.shade")}
+                value={picked.shade}
+                disabled={busy}
+                onChange={(shade) => editOverlay(chosen, { shade })}
+                t={t}
+              />
+              <PropSlider
+                label={t("clips.editor.overlay.thickness")}
+                value={picked.thickness}
+                min={1}
+                max={32}
+                disabled={busy}
+                onChange={(thickness) => editOverlay(chosen, { thickness })}
+              />
+              <CornerChoice
+                label={t("clips.editor.overlay.towards")}
+                value={picked.towards}
+                color={accentColor.value}
+                disabled={busy}
+                onChange={(towards) => editOverlay(chosen, { towards })}
+                t={t}
+              />
+            </>
+          )}
+
+          {picked.kind === "text" && (
+            <>
+              <div className="flex min-w-[14rem] flex-1 items-center gap-3">
+                <span className="shrink-0 font-minecraft text-sm text-white/80">
+                  {t("clips.editor.overlay.text")}
+                </span>
+                <Input
+                  size="sm"
+                  value={picked.content}
+                  disabled={busy}
+                  placeholder={t("clips.editor.overlay.text_placeholder")}
+                  aria-label={t("clips.editor.overlay.text")}
+                  onChange={(event) => editOverlay(chosen, { content: event.target.value })}
+                />
+              </div>
+              <PropSlider
+                label={t("clips.editor.overlay.size")}
+                value={picked.size}
+                min={8}
+                max={240}
+                disabled={busy}
+                onChange={(size) => editOverlay(chosen, { size })}
+              />
+              <ShadeChoice
+                label={t("clips.editor.overlay.shade")}
+                value={picked.shade}
+                disabled={busy}
+                onChange={(shade) => editOverlay(chosen, { shade })}
+                t={t}
+              />
+              {picked.content.trim() === "" && (
+                <p className="flex w-full items-center gap-2 font-minecraft text-xs text-amber-300">
+                  <Icon icon="solar:danger-triangle-bold" className="h-4 w-4 shrink-0" />
+                  {t("clips.editor.overlay.text_empty")}
+                </p>
+              )}
+            </>
+          )}
 
           <ClipIconButton
             icon="solar:trash-bin-trash-bold"
@@ -806,6 +934,194 @@ function Handle({
   );
 }
 
+function PropSlider({
+  label,
+  value,
+  min,
+  max,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  disabled: boolean;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="flex min-w-[14rem] flex-1 items-center gap-3">
+      <span className="shrink-0 truncate font-minecraft text-sm text-white/80">{label}</span>
+      <div className="min-w-0 flex-1">
+        <RangeSlider
+          value={value}
+          onChange={onChange}
+          min={min}
+          max={max}
+          step={1}
+          size="sm"
+          showValue={false}
+          disabled={disabled}
+          label={label}
+        />
+      </div>
+      <span className="w-10 shrink-0 text-right font-minecraft text-sm text-white">{value}</span>
+    </div>
+  );
+}
+
+function ShadeChoice({
+  label,
+  value,
+  disabled,
+  onChange,
+  t,
+}: {
+  label: string;
+  value: number;
+  disabled: boolean;
+  onChange: (shade: number) => void;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      <span className="font-minecraft text-sm text-white/80">{label}</span>
+      {SHADES.map((shade) => (
+        <button
+          key={shade.value}
+          type="button"
+          disabled={disabled}
+          aria-label={t(shade.label)}
+          aria-pressed={value === shade.value}
+          title={t(shade.label)}
+          onClick={() => onChange(shade.value)}
+          className={cn(
+            "h-6 w-6 rounded border transition-colors",
+            value === shade.value ? "border-white" : "border-white/20 hover:border-white/60",
+            disabled && "cursor-not-allowed opacity-40",
+          )}
+          style={{ backgroundColor: grey(shade.value) }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function CornerChoice({
+  label,
+  value,
+  color,
+  disabled,
+  onChange,
+  t,
+}: {
+  label: string;
+  value: ClipCorner;
+  color: string;
+  disabled: boolean;
+  onChange: (corner: ClipCorner) => void;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      <span className="font-minecraft text-sm text-white/80">{label}</span>
+      <div className="grid grid-cols-2 gap-1">
+        {CORNERS.map((corner) => (
+          <button
+            key={corner.value}
+            type="button"
+            disabled={disabled}
+            aria-label={t(corner.label)}
+            aria-pressed={value === corner.value}
+            title={t(corner.label)}
+            onClick={() => onChange(corner.value)}
+            className={cn(
+              "flex h-6 w-6 items-center justify-center rounded border transition-colors",
+              value === corner.value
+                ? "text-white"
+                : "border-white/10 bg-black/30 text-white/50 hover:text-white",
+              disabled && "cursor-not-allowed opacity-40",
+            )}
+            style={
+              value === corner.value
+                ? { borderColor: color, backgroundColor: `${color}30` }
+                : undefined
+            }
+          >
+            <Icon
+              icon="solar:arrow-right-up-bold"
+              className="h-3.5 w-3.5"
+              style={{ transform: `rotate(${corner.turn}deg)` }}
+            />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function OverlayArt({ overlay }: { overlay: ClipOverlay }) {
+  if (overlay.kind === "box") {
+    return (
+      <span
+        className="pointer-events-none absolute inset-0"
+        style={{ backgroundColor: grey(overlay.shade) }}
+      />
+    );
+  }
+
+  const width = Math.max(1, overlay.width * 1920);
+  const height = Math.max(1, overlay.height * 1080);
+
+  if (overlay.kind === "arrow") {
+    const toX = overlay.towards.endsWith("right") ? width : 0;
+    const toY = overlay.towards.startsWith("bottom") ? height : 0;
+    const head = Math.min(width, height) * 0.3;
+    return (
+      <svg
+        aria-hidden="true"
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+        className="pointer-events-none absolute inset-0 h-full w-full"
+      >
+        <g
+          fill="none"
+          stroke={grey(overlay.shade)}
+          strokeWidth={overlay.thickness}
+          strokeLinecap="round"
+        >
+          <line x1={width - toX} y1={height - toY} x2={toX} y2={toY} />
+          <line x1={toX} y1={toY} x2={toX === 0 ? head : width - head} y2={toY} />
+          <line x1={toX} y1={toY} x2={toX} y2={toY === 0 ? head : height - head} />
+        </g>
+      </svg>
+    );
+  }
+
+  if (overlay.kind === "text" && overlay.content.trim() !== "") {
+    return (
+      <svg
+        aria-hidden="true"
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMinYMid meet"
+        className="pointer-events-none absolute inset-0 h-full w-full"
+      >
+        <text
+          x={0}
+          y={height / 2}
+          fill={grey(overlay.shade)}
+          fontSize={overlay.size}
+          dominantBaseline="middle"
+        >
+          {overlay.content}
+        </text>
+      </svg>
+    );
+  }
+
+  return null;
+}
+
 function OverlayBox({
   overlay,
   active,
@@ -821,6 +1137,8 @@ function OverlayBox({
   onPick: () => void;
   onGrab: (mode: "move" | "resize", event: { clientX: number; clientY: number }) => void;
 }) {
+  const blank = overlay.kind === "text" && overlay.content.trim() === "";
+
   return (
     <div
       role="button"
@@ -844,17 +1162,21 @@ function OverlayBox({
       className={cn(
         "absolute cursor-move rounded-sm border-2 transition-colors focus:outline-none",
         active ? "bg-white/5" : "border-white/40 bg-black/10 hover:border-white/70",
+        blank && "border-dashed",
       )}
       style={{
         left: `${overlay.left * 100}%`,
         top: `${overlay.top * 100}%`,
         width: `${overlay.width * 100}%`,
         height: `${overlay.height * 100}%`,
-        backdropFilter: `blur(${Math.max(1, overlay.strength / 4)}px)`,
-        borderColor: active ? color : undefined,
+        backdropFilter:
+          overlay.kind === "blur" ? `blur(${Math.max(1, overlay.strength / 4)}px)` : undefined,
+        borderColor: blank ? "#fcd34d" : active ? color : undefined,
         boxShadow: active ? `0 0 10px ${color}80` : undefined,
       }}
     >
+      <OverlayArt overlay={overlay} />
+
       <span
         role="presentation"
         onPointerDown={(event) => {
