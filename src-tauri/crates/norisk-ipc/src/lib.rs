@@ -685,10 +685,52 @@ pub struct PreviewTrack {
     pub path: PathBuf,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum OverlayKind {
+    Blur { strength: u32 },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipOverlay {
+    #[serde(flatten)]
+    pub kind: OverlayKind,
+    pub left: f32,
+    pub top: f32,
+    pub width: f32,
+    pub height: f32,
+    pub start_seconds: f64,
+    pub end_seconds: f64,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ClipShape {
+    #[default]
+    Vertical,
+    Square,
+    Wide,
+}
+
+impl ClipShape {
+    pub fn ratio(self) -> (i64, i64) {
+        match self {
+            ClipShape::Vertical => (9, 16),
+            ClipShape::Square => (1, 1),
+            ClipShape::Wide => (21, 9),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExportVerticalRequest {
     pub source: PathBuf,
     pub destination: PathBuf,
+    #[serde(default)]
+    pub shape: ClipShape,
+    #[serde(default)]
+    pub overlays: Vec<ClipOverlay>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
