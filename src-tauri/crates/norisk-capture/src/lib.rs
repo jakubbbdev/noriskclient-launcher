@@ -12,6 +12,8 @@ pub mod ipc;
 #[cfg(windows)]
 pub mod gif;
 #[cfg(windows)]
+pub mod overlay;
+#[cfg(windows)]
 pub mod trim;
 #[cfg(windows)]
 pub mod preview;
