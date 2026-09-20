@@ -209,7 +209,11 @@ fn paint(frame: &Frame, origin: i64, overlays: &[norisk_ipc::ClipOverlay]) -> Re
                     stride,
                     width: chroma_width,
                     height: chroma_height,
-                    channel: crate::overlay::Channel::Chroma,
+                    channel: if index == 1 {
+                        crate::overlay::Channel::Blue
+                    } else {
+                        crate::overlay::Channel::Red
+                    },
                 };
                 apply(&mut plane, chroma, &overlay.kind);
             }
@@ -684,7 +688,7 @@ mod render_tests {
                 kind: norisk_ipc::OverlayKind::Text {
                     content: "NORISK CLIPS".into(),
                     size: 48,
-                    shade: 235,
+                    colour: 0xff3b30,
                 },
                 left: 0.08,
                 top: 0.62,
@@ -695,7 +699,7 @@ mod render_tests {
             },
             norisk_ipc::ClipOverlay {
                 kind: norisk_ipc::OverlayKind::Arrow {
-                    shade: 235,
+                    colour: 0xff3b30,
                     thickness: 9,
                     towards: norisk_ipc::Corner::BottomRight,
                 },

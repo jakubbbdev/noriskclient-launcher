@@ -11,7 +11,25 @@ static PARSED: std::sync::OnceLock<Option<ab_glyph::FontRef<'static>>> =
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Channel {
     Luma,
-    Chroma,
+    Blue,
+    Red,
+}
+
+pub fn to_yuv(colour: u32) -> (u8, u8, u8) {
+    let red = ((colour >> 16) & 0xff) as f32;
+    let green = ((colour >> 8) & 0xff) as f32;
+    let blue = (colour & 0xff) as f32;
+
+    let luma = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+    let studio = 16.0 + luma * 219.0 / 255.0;
+    let difference_blue = 128.0 + (blue - luma) * 0.5389 * 224.0 / 255.0;
+    let difference_red = 128.0 + (red - luma) * 0.6350 * 224.0 / 255.0;
+
+    (
+        studio.round().clamp(0.0, 255.0) as u8,
+        difference_blue.round().clamp(0.0, 255.0) as u8,
+        difference_red.round().clamp(0.0, 255.0) as u8,
+    )
 }
 
 pub struct Plane<'a> {
@@ -23,17 +41,19 @@ pub struct Plane<'a> {
 }
 
 impl Plane<'_> {
-    fn shade_for(&self, wanted: u8) -> u8 {
+    fn value_of(&self, colour: u32) -> u8 {
+        let (luma, blue, red) = to_yuv(colour);
         match self.channel {
-            Channel::Luma => wanted,
-            Channel::Chroma => NEUTRAL,
+            Channel::Luma => luma,
+            Channel::Blue => blue,
+            Channel::Red => red,
         }
     }
 
     fn scale(&self) -> f32 {
         match self.channel {
             Channel::Luma => 1.0,
-            Channel::Chroma => 0.5,
+            Channel::Blue | Channel::Red => 0.5,
         }
     }
 }
@@ -81,29 +101,29 @@ pub fn apply(plane: &mut Plane, rect: Rect, kind: &OverlayKind) {
     };
     match kind {
         OverlayKind::Blur { strength } => blur(plane, rect, *strength),
-        OverlayKind::Box { shade } => fill(plane, rect, *shade),
+        OverlayKind::Box { colour } => fill(plane, rect, *colour),
         OverlayKind::Arrow {
-            shade,
+            colour,
             thickness,
             towards,
-        } => arrow(plane, rect, *shade, *thickness, *towards),
+        } => arrow(plane, rect, *colour, *thickness, *towards),
         OverlayKind::Text {
             content,
             size,
-            shade,
-        } => text(plane, rect, content, *size, *shade),
+            colour,
+        } => text(plane, rect, content, *size, *colour),
     }
 }
 
-fn fill(plane: &mut Plane, rect: Rect, shade: u8) {
-    let shade = plane.shade_for(shade);
+fn fill(plane: &mut Plane, rect: Rect, colour: u32) {
+    let shade = plane.value_of(colour);
     for y in rect.top..rect.top + rect.height {
         let start = y * plane.stride + rect.left;
         plane.data[start..start + rect.width].fill(shade);
     }
 }
 
-fn text(plane: &mut Plane, rect: Rect, content: &str, size: u32, shade: u8) {
+fn text(plane: &mut Plane, rect: Rect, content: &str, size: u32, colour: u32) {
     use ab_glyph::{Font, ScaleFont};
 
     let Some(font) = PARSED
@@ -119,7 +139,7 @@ fn text(plane: &mut Plane, rect: Rect, content: &str, size: u32, shade: u8) {
         return;
     }
 
-    let shade = plane.shade_for(shade);
+    let shade = plane.value_of(colour);
     let scaled = font.as_scaled(ab_glyph::PxScale::from(
         (size.clamp(4, 512) as f32 * plane.scale()).max(1.0),
     ));
@@ -173,8 +193,8 @@ fn text(plane: &mut Plane, rect: Rect, content: &str, size: u32, shade: u8) {
     }
 }
 
-fn arrow(plane: &mut Plane, rect: Rect, shade: u8, thickness: u32, towards: Corner) {
-    let shade = plane.shade_for(shade);
+fn arrow(plane: &mut Plane, rect: Rect, colour: u32, thickness: u32, towards: Corner) {
+    let shade = plane.value_of(colour);
     let thickness = (thickness.max(1) as usize).min(rect.width.min(rect.height));
     let (width, height) = (rect.width as f64, rect.height as f64);
 
@@ -417,7 +437,7 @@ mod tests {
         let rect = Rect { left: 8, top: 8, width: 10, height: 6 };
 
         let mut plane = Plane { data: &mut data, stride: width, width, height, channel: Channel::Luma };
-        apply(&mut plane, rect, &OverlayKind::Box { shade: 16 });
+        apply(&mut plane, rect, &OverlayKind::Box { colour: 0x000000 });
 
         for y in rect.top..rect.top + rect.height {
             for x in rect.left..rect.left + rect.width {
@@ -435,7 +455,7 @@ mod tests {
         let rect = Rect { left: 2, top: 2, width: 12, height: 12 };
 
         let mut plane = Plane { data: &mut data, stride, width, height, channel: Channel::Luma };
-        apply(&mut plane, rect, &OverlayKind::Box { shade: 100 });
+        apply(&mut plane, rect, &OverlayKind::Box { colour: 0x646464 });
 
         for y in 0..height {
             for x in width..stride {
@@ -454,11 +474,13 @@ mod tests {
         apply(
             &mut plane,
             rect,
-            &OverlayKind::Arrow { shade: 255, thickness: 3, towards: Corner::BottomRight },
+            &OverlayKind::Arrow { colour: 0xffffff, thickness: 3, towards: Corner::BottomRight },
         );
 
-        assert_eq!(data[0], 255, "the tail corner is empty");
-        assert_eq!(data[width * (height - 1) + width - 1], 255, "the head is empty");
+        let white = to_yuv(0xffffff).0;
+        assert_eq!(white, 235, "white should be studio white, not full range");
+        assert_eq!(data[0], white, "the tail corner is empty");
+        assert_eq!(data[width * (height - 1) + width - 1], white, "the head is empty");
         assert_eq!(data[width - 1], 0, "the opposite corner should stay clear");
     }
 
@@ -478,9 +500,13 @@ mod tests {
             apply(
                 &mut plane,
                 Rect { left: 0, top: 0, width, height },
-                &OverlayKind::Arrow { shade: 255, thickness: 3, towards },
+                &OverlayKind::Arrow { colour: 0xffffff, thickness: 3, towards },
             );
-            assert_eq!(data[head], 255, "{towards:?} did not reach its corner");
+            assert_eq!(
+                data[head],
+                to_yuv(0xffffff).0,
+                "{towards:?} did not reach its corner",
+            );
         }
     }
 
@@ -495,7 +521,7 @@ mod tests {
         apply(
             &mut plane,
             rect,
-            &OverlayKind::Arrow { shade: 200, thickness: 5, towards: Corner::TopLeft },
+            &OverlayKind::Arrow { colour: 0xc8c8c8, thickness: 5, towards: Corner::TopLeft },
         );
 
         for y in 0..height {
@@ -522,13 +548,15 @@ mod tests {
             stride: width,
             width,
             height,
-            channel: Channel::Chroma,
+            channel: Channel::Blue,
         };
-        apply(&mut plane, rect, &OverlayKind::Box { shade: 16 });
+        apply(&mut plane, rect, &OverlayKind::Box { colour: 0x000000 });
 
+        let (_, blue, _) = to_yuv(0x000000);
+        assert_eq!(blue, NEUTRAL, "black should carry no colour");
         assert!(
-            data.iter().all(|v| *v == NEUTRAL),
-            "a black box tinted the picture instead of staying grey",
+            data.iter().all(|v| *v == blue),
+            "a black box did not land on the neutral colour value",
         );
     }
 
@@ -543,19 +571,20 @@ mod tests {
             stride: width,
             width,
             height,
-            channel: Channel::Chroma,
+            channel: Channel::Blue,
         };
         apply(
             &mut plane,
             rect,
-            &OverlayKind::Arrow { shade: 235, thickness: 3, towards: Corner::BottomRight },
+            &OverlayKind::Arrow { colour: 0xffffff, thickness: 3, towards: Corner::BottomRight },
         );
 
+        let (_, blue, _) = to_yuv(0xffffff);
         assert!(
-            data.iter().all(|v| *v == 90 || *v == NEUTRAL),
-            "the arrow wrote a colour value onto a colour plane",
+            data.iter().all(|v| *v == 90 || *v == blue),
+            "the arrow wrote something other than its own colour",
         );
-        assert!(data.iter().any(|v| *v == NEUTRAL), "the arrow drew nothing");
+        assert!(data.iter().any(|v| *v == blue), "the arrow drew nothing");
     }
 
     #[test]
@@ -575,7 +604,7 @@ mod tests {
         apply(
             &mut plane,
             rect,
-            &OverlayKind::Text { content: "HALLO".into(), size: 32, shade: 235 },
+            &OverlayKind::Text { content: "HALLO".into(), size: 32, colour: 0xffffff },
         );
 
         let changed = data.iter().zip(&original).filter(|(a, b)| a != b).count();
@@ -614,7 +643,7 @@ mod tests {
         apply(
             &mut plane,
             Rect { left: 0, top: 0, width, height },
-            &OverlayKind::Text { content: "   ".into(), size: 20, shade: 235 },
+            &OverlayKind::Text { content: "   ".into(), size: 20, colour: 0xffffff },
         );
 
         assert_eq!(data, original);
