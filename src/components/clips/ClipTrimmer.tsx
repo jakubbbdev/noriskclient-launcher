@@ -51,7 +51,7 @@ const TOOLS: { icon: string; label: string; seed: NewOverlay }[] = [
   {
     icon: "solar:stop-bold",
     label: "clips.editor.tool.box",
-    seed: { kind: "box", colour: 0x000000 },
+    seed: { kind: "box", colour: 0xffffff },
   },
   {
     icon: "solar:arrow-right-up-bold",
@@ -72,11 +72,7 @@ const OVERLAY_NAME: Record<ClipOverlay["kind"], string> = {
   text: "clips.editor.overlay.name_text",
 };
 
-const SHADES: { value: number; label: string }[] = [
-  { value: 0x000000, label: "clips.editor.overlay.colour.black" },
-  { value: 0x808080, label: "clips.editor.overlay.colour.grey" },
-  { value: 0xffffff, label: "clips.editor.overlay.colour.white" },
-];
+const SWATCHES: number[] = [0xffffff, 0x000000, 0xff3b30, 0xffcc00, 0x34c759, 0x0a84ff];
 
 const CORNERS: { value: ClipCorner; label: string; turn: number }[] = [
   { value: "top_left", label: "clips.editor.overlay.corner.top_left", turn: -90 },
@@ -983,24 +979,69 @@ function ShadeChoice({
   onChange: (colour: number) => void;
   t: (key: string, options?: Record<string, unknown>) => string;
 }) {
+  const [typed, setTyped] = useState(grey(value));
+
+  useEffect(() => {
+    setTyped(grey(value));
+  }, [value]);
+
+  const accept = (text: string) => {
+    setTyped(text);
+    const cleaned = text.trim().replace(/^#/, "");
+    if (/^[0-9a-fA-F]{6}$/.test(cleaned)) onChange(parseInt(cleaned, 16));
+  };
+
   return (
     <div className="flex shrink-0 items-center gap-2">
       <span className="font-minecraft text-sm text-white/80">{label}</span>
-      {SHADES.map((shade) => (
+
+      <label
+        className={cn(
+          "relative h-7 w-7 shrink-0 overflow-hidden rounded border border-white/20",
+          disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:border-white/60",
+        )}
+        style={{ backgroundColor: grey(value) }}
+        title={t("clips.editor.overlay.colour.pick")}
+      >
+        <input
+          type="color"
+          value={grey(value)}
+          disabled={disabled}
+          aria-label={t("clips.editor.overlay.colour.pick")}
+          onChange={(event) => accept(event.target.value)}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        />
+      </label>
+
+      <input
+        type="text"
+        value={typed}
+        disabled={disabled}
+        spellCheck={false}
+        maxLength={7}
+        aria-label={t("clips.editor.overlay.colour.hex")}
+        onChange={(event) => accept(event.target.value)}
+        onBlur={() => setTyped(grey(value))}
+        className={cn(
+          "w-24 rounded border border-white/20 bg-black/30 px-2 py-1 font-minecraft text-sm uppercase text-white/90 outline-none transition-colors",
+          disabled ? "cursor-not-allowed opacity-40" : "hover:border-white/40 focus:border-white/60",
+        )}
+      />
+
+      {SWATCHES.map((preset) => (
         <button
-          key={shade.value}
+          key={preset}
           type="button"
           disabled={disabled}
-          aria-label={t(shade.label)}
-          aria-pressed={value === shade.value}
-          title={t(shade.label)}
-          onClick={() => onChange(shade.value)}
+          aria-label={grey(preset)}
+          title={grey(preset)}
+          onClick={() => onChange(preset)}
           className={cn(
-            "h-6 w-6 rounded border transition-colors",
-            value === shade.value ? "border-white" : "border-white/20 hover:border-white/60",
+            "h-5 w-5 shrink-0 rounded border transition-colors",
+            value === preset ? "border-white" : "border-white/20 hover:border-white/60",
             disabled && "cursor-not-allowed opacity-40",
           )}
-          style={{ backgroundColor: grey(shade.value) }}
+          style={{ backgroundColor: grey(preset) }}
         />
       ))}
     </div>

@@ -2694,6 +2694,8 @@
   "clips.editor.overlay.name_text": "Текст {{index}}",
   "clips.editor.overlay.strength": "Сила",
   "clips.editor.overlay.colour": "Цвет",
+  "clips.editor.overlay.colour.pick": "Выбрать цвет",
+  "clips.editor.overlay.colour.hex": "Hex-значение",
   "clips.editor.overlay.colour.black": "Чёрный",
   "clips.editor.overlay.colour.grey": "Серый",
   "clips.editor.overlay.colour.white": "Белый",

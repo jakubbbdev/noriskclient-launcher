@@ -2431,6 +2431,8 @@
   "clips.editor.overlay.name_text": "Text {{index}}",
   "clips.editor.overlay.strength": "Blur strength",
   "clips.editor.overlay.colour": "Colour",
+  "clips.editor.overlay.colour.pick": "Pick a colour",
+  "clips.editor.overlay.colour.hex": "Hex value",
   "clips.editor.overlay.colour.black": "Black",
   "clips.editor.overlay.colour.grey": "Grey",
   "clips.editor.overlay.colour.white": "White",

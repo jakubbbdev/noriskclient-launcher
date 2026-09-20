@@ -2682,6 +2682,8 @@
   "clips.editor.overlay.name_text": "Metin {{index}}",
   "clips.editor.overlay.strength": "Şiddet",
   "clips.editor.overlay.colour": "Renk",
+  "clips.editor.overlay.colour.pick": "Renk seç",
+  "clips.editor.overlay.colour.hex": "Hex değeri",
   "clips.editor.overlay.colour.black": "Siyah",
   "clips.editor.overlay.colour.grey": "Gri",
   "clips.editor.overlay.colour.white": "Beyaz",

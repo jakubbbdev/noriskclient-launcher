@@ -2697,6 +2697,8 @@
   "clips.editor.overlay.name_text": "टेक्स्ट {{index}}",
   "clips.editor.overlay.strength": "तीव्रता",
   "clips.editor.overlay.colour": "रंग",
+  "clips.editor.overlay.colour.pick": "रंग चुनें",
+  "clips.editor.overlay.colour.hex": "हेक्स मान",
   "clips.editor.overlay.colour.black": "काला",
   "clips.editor.overlay.colour.grey": "धूसर",
   "clips.editor.overlay.colour.white": "सफ़ेद",

@@ -2682,6 +2682,8 @@
   "clips.editor.overlay.name_text": "Testo {{index}}",
   "clips.editor.overlay.strength": "Intensità",
   "clips.editor.overlay.colour": "Colore",
+  "clips.editor.overlay.colour.pick": "Scegli un colore",
+  "clips.editor.overlay.colour.hex": "Valore hex",
   "clips.editor.overlay.colour.black": "Nero",
   "clips.editor.overlay.colour.grey": "Grigio",
   "clips.editor.overlay.colour.white": "Bianco",
