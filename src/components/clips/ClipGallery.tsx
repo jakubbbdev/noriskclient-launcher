@@ -14,6 +14,7 @@ import { useConfirmDialog } from "../../hooks/useConfirmDialog";
 import { useThemeStore } from "../../store/useThemeStore";
 import {
   deleteClip,
+  exportGif,
   getClipDetails,
   renameClip,
   setClipFavourite,
@@ -24,6 +25,7 @@ import {
   type ClipDetails,
   type ClipEntry,
   type ClipStorageUsage,
+  type ExportedGif,
   type TrackLevel,
 } from "../../services/clip-service";
 import { ClipTrimmer } from "./ClipTrimmer";
@@ -98,11 +100,34 @@ export function ClipGallery({
         listen("clip_saved", () => void refresh()),
         listen("clip_trimmed", () => void refresh()),
         listen("clip_exported", () => void refresh()),
+        listen<ExportedGif>("clip_gif_exported", (event) => {
+          setBusy(null);
+          toast.success(
+            event.payload.truncated
+              ? t("clips.gallery.gif_done_shortened")
+              : t("clips.gallery.gif_done"),
+          );
+        }),
+        listen("clip_error", () => setBusy(null)),
       ]);
       unlisten = () => stops.forEach((stop) => stop());
     })();
     return () => unlisten?.();
-  }, [refresh]);
+  }, [refresh, t]);
+
+  const makeGif = useCallback(
+    async (clip: ClipEntry) => {
+      setBusy(clip.path);
+      try {
+        await exportGif(clip.path);
+      } catch (e) {
+        setBusy(null);
+        console.error("Could not start the GIF export", e);
+        toast.error(parseErrorMessage(e));
+      }
+    },
+    [],
+  );
 
   const setFavourite = useCallback(
     async (clip: ClipEntry, favourite: boolean) => {
@@ -253,6 +278,7 @@ export function ClipGallery({
             onRename={() => setRenaming(clip)}
             onThumbnail={refresh}
             onVertical={() => setVertical(clip)}
+            onGif={() => void makeGif(clip)}
             t={t}
           />
         ))}
@@ -305,6 +331,7 @@ function ClipCard({
   onRename,
   onThumbnail,
   onVertical,
+  onGif,
   t,
 }: {
   clip: ClipEntry;
@@ -317,6 +344,7 @@ function ClipCard({
   onRename: () => void;
   onThumbnail: () => void;
   onVertical: () => void;
+  onGif: () => void;
   t: Translate;
 }) {
   const accentColor = useThemeStore((state) => state.accentColor);
@@ -385,6 +413,7 @@ function ClipCard({
       <div className="absolute top-2 right-2 z-20 flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-200">
         <ClipIconButton icon="solar:pen-bold" label={t("clips.gallery.rename")} onClick={onRename} />
         <ClipIconButton icon="solar:smartphone-bold" label={t("clips.gallery.vertical")} onClick={onVertical} />
+        <ClipIconButton icon="solar:gallery-bold" label={t("clips.gallery.gif")} onClick={onGif} />
         <ClipIconButton icon="solar:folder-with-files-bold" label={t("clips.gallery.reveal")} onClick={onReveal} />
         <ClipIconButton
           icon="solar:trash-bin-trash-bold"

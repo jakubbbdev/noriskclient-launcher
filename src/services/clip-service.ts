@@ -98,6 +98,21 @@ export async function exportVertical(path: string): Promise<string> {
   return invoke<string>("clip_export_vertical", { path });
 }
 
+export interface ExportedGif {
+  path: string;
+  source: string;
+  width: number;
+  height: number;
+  frames: number;
+  durationSeconds: number;
+  sizeBytes: number;
+  truncated: boolean;
+}
+
+export async function exportGif(path: string): Promise<string> {
+  return invoke<string>("clip_export_gif", { path });
+}
+
 export async function listOpenApps(): Promise<OpenApp[]> {
   return invoke<OpenApp[]>("clip_open_apps");
 }
