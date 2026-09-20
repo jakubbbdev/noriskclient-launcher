@@ -12,6 +12,8 @@ use crate::writer::{write_mp4, TrackInfo};
 const VERTICAL_WIDTH: i64 = 9;
 const VERTICAL_HEIGHT: i64 = 16;
 
+type Ratio = (i64, i64);
+
 #[derive(Debug, Clone)]
 pub struct VerticalResult {
     pub path: PathBuf,
@@ -21,12 +23,13 @@ pub struct VerticalResult {
     pub size_bytes: u64,
 }
 
-fn centre_crop(width: u32, height: u32) -> (u32, u32, u32, u32) {
+fn centre_crop(width: u32, height: u32, ratio: Ratio) -> (u32, u32, u32, u32) {
+    let (across, down) = ratio;
     let (width, height) = (width as i64, height as i64);
 
-    if (height * VERTICAL_WIDTH / VERTICAL_HEIGHT) & !1 >= width {
+    if (height * across / down) & !1 >= width {
         let keep_width = width & !1;
-        let keep_height = (keep_width * VERTICAL_HEIGHT / VERTICAL_WIDTH).min(height) & !1;
+        let keep_height = (keep_width * down / across).min(height) & !1;
         let spare = height - keep_height;
         let top = (spare / 2) & !1;
         return (
@@ -38,7 +41,7 @@ fn centre_crop(width: u32, height: u32) -> (u32, u32, u32, u32) {
     }
 
     let keep_height = height & !1;
-    let keep_width = (keep_height * VERTICAL_WIDTH / VERTICAL_HEIGHT) & !1;
+    let keep_width = (keep_height * across / down) & !1;
     let spare = width - keep_width;
     let left = (spare / 2) & !1;
 
@@ -53,23 +56,32 @@ fn centre_crop(width: u32, height: u32) -> (u32, u32, u32, u32) {
 pub fn to_vertical(
     source: &Path,
     destination: &Path,
+    shape: norisk_ipc::ClipShape,
+    overlays: &[norisk_ipc::ClipOverlay],
     progress: impl Fn(u32, u32),
 ) -> Result<VerticalResult> {
     let clip = crate::trim::read(source)?;
+    let ratio = shape.ratio();
 
-    let (left, right, top, bottom) = centre_crop(clip.track.width, clip.track.height);
+    let (left, right, top, bottom) = centre_crop(clip.track.width, clip.track.height, ratio);
     let width = clip.track.width.saturating_sub(left + right);
     let height = clip.track.height.saturating_sub(top + bottom);
 
     if width == 0 || height == 0 {
         bail!(
-            "a {}x{} clip has no 9:16 middle to cut",
+            "a {}x{} clip has no {}:{} middle to cut",
             clip.track.width,
-            clip.track.height
+            clip.track.height,
+            ratio.0,
+            ratio.1
         );
     }
     if (left, right, top, bottom) == (0, 0, 0, 0) {
-        log::info!("{}x{} is already 9:16; only re-encoding", width, height);
+        log::info!(
+            "{width}x{height} is already {}:{}; only re-encoding",
+            ratio.0,
+            ratio.1
+        );
     }
 
     log::info!(
@@ -83,14 +95,17 @@ pub fn to_vertical(
 
     let total = clip.video.len() as u32;
     let mut packets: Vec<Packet> = Vec::with_capacity(clip.video.len());
+    let origin = clip.video.first().map(|p| p.pts).unwrap_or(0);
 
     for (index, packet) in clip.video.iter().enumerate() {
         for frame in decoder.push(packet)? {
+            paint(&frame, origin, overlays)?;
             packets.extend(encoder.push(frame, (left, right, top, bottom))?);
         }
         progress(index as u32 + 1, total);
     }
     for frame in decoder.finish()? {
+        paint(&frame, origin, overlays)?;
         packets.extend(encoder.push(frame, (left, right, top, bottom))?);
     }
     packets.extend(encoder.finish()?);
@@ -139,6 +154,70 @@ pub fn to_vertical(
         duration_seconds: written.duration_seconds,
         size_bytes: written.size_bytes,
     })
+}
+
+fn paint(frame: &Frame, origin: i64, overlays: &[norisk_ipc::ClipOverlay]) -> Result<()> {
+    use crate::overlay::{apply, covers, halve, rect_in, Plane};
+
+    if overlays.is_empty() {
+        return Ok(());
+    }
+
+    unsafe {
+        let seconds = ((*frame.0).pts - origin) as f64 / TIME_BASE_DEN as f64;
+        let wanted: Vec<_> = overlays.iter().filter(|o| covers(o, seconds)).collect();
+        if wanted.is_empty() {
+            return Ok(());
+        }
+
+        let rc = ff::av_frame_make_writable(frame.0);
+        if rc < 0 {
+            bail!("could not make a frame writable to paint on: {}", av_error(rc));
+        }
+
+        let width = (*frame.0).width.max(0) as usize;
+        let height = (*frame.0).height.max(0) as usize;
+        let chroma_width = width.div_ceil(2);
+        let chroma_height = height.div_ceil(2);
+
+        for overlay in wanted {
+            let Some(rect) = rect_in(overlay, width, height) else {
+                continue;
+            };
+
+            let stride = (*frame.0).linesize[0].max(0) as usize;
+            if (*frame.0).data[0].is_null() || stride < width {
+                bail!("the decoder handed back a frame without a usable luma plane");
+            }
+            let mut luma = Plane {
+                data: std::slice::from_raw_parts_mut((*frame.0).data[0], stride * height),
+                stride,
+                width,
+                height,
+            };
+            apply(&mut luma, rect, &overlay.kind);
+
+            let chroma = halve(rect);
+            for index in 1..3 {
+                let stride = (*frame.0).linesize[index].max(0) as usize;
+                if (*frame.0).data[index].is_null() || stride < chroma_width {
+                    continue;
+                }
+                let mut plane = Plane {
+                    data: std::slice::from_raw_parts_mut(
+                        (*frame.0).data[index],
+                        stride * chroma_height,
+                    ),
+                    stride,
+                    width: chroma_width,
+                    height: chroma_height,
+                };
+                apply(&mut plane, chroma, &overlay.kind);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub(crate) struct Decoder {
@@ -445,8 +524,14 @@ unsafe impl Send for Encoder {}
 mod tests {
     use super::*;
 
+    const NINE_BY_SIXTEEN: Ratio = (VERTICAL_WIDTH, VERTICAL_HEIGHT);
+
     fn cropped(width: u32, height: u32) -> (u32, u32) {
-        let (left, right, top, bottom) = centre_crop(width, height);
+        cropped_to(width, height, NINE_BY_SIXTEEN)
+    }
+
+    fn cropped_to(width: u32, height: u32, ratio: Ratio) -> (u32, u32) {
+        let (left, right, top, bottom) = centre_crop(width, height, ratio);
         (width - left - right, height - top - bottom)
     }
 
@@ -454,6 +539,34 @@ mod tests {
     fn a_landscape_clip_loses_its_sides() {
         assert_eq!(cropped(1920, 1080), (606, 1080));
         assert_eq!(cropped(2560, 1440), (810, 1440));
+    }
+
+    #[test]
+    fn every_shape_cuts_to_its_own_ratio() {
+        for shape in [
+            norisk_ipc::ClipShape::Vertical,
+            norisk_ipc::ClipShape::Square,
+            norisk_ipc::ClipShape::Wide,
+        ] {
+            let ratio = shape.ratio();
+            for (width, height) in [(1920, 1080), (2560, 1440), (1280, 720)] {
+                let (w, h) = cropped_to(width, height, ratio);
+                let got = w as f64 / h as f64;
+                let wanted = ratio.0 as f64 / ratio.1 as f64;
+                assert!(
+                    (got - wanted).abs() < 0.02,
+                    "{shape:?}: {width}x{height} became {w}x{h}, ratio {got:.4} not {wanted:.4}",
+                );
+                assert!(w <= width && h <= height, "{shape:?} grew the picture");
+            }
+        }
+    }
+
+    #[test]
+    fn a_square_cut_of_a_wide_clip_keeps_the_full_height() {
+        let (w, h) = cropped_to(1920, 1080, (1, 1));
+        assert_eq!(h, 1080);
+        assert_eq!(w, 1080);
     }
 
     #[test]
@@ -471,7 +584,7 @@ mod tests {
 
     #[test]
     fn the_cut_is_centred() {
-        let (left, right, _, _) = centre_crop(1920, 1080);
+        let (left, right, _, _) = centre_crop(1920, 1080, NINE_BY_SIXTEEN);
         assert!(
             left.abs_diff(right) <= 2,
             "the column should sit in the middle: {left} vs {right}",
@@ -481,7 +594,7 @@ mod tests {
     #[test]
     fn every_offset_is_even() {
         for (width, height) in [(1920, 1080), (2559, 1439), (1281, 721), (3840, 2160)] {
-            let (left, _, top, _) = centre_crop(width, height);
+            let (left, _, top, _) = centre_crop(width, height, NINE_BY_SIXTEEN);
             assert_eq!(left % 2, 0, "{width}x{height} crops {left} from the left");
             assert_eq!(top % 2, 0, "{width}x{height} crops {top} from the top");
         }
@@ -507,7 +620,7 @@ mod tests {
 
     #[test]
     fn a_clip_already_taller_than_wide_loses_its_top_and_bottom() {
-        let (left, right, top, bottom) = centre_crop(1080, 2400);
+        let (left, right, top, bottom) = centre_crop(1080, 2400, NINE_BY_SIXTEEN);
         assert_eq!((left, right), (0, 0), "nothing should come off the sides");
         assert!(top > 0 && bottom > 0);
 
@@ -518,7 +631,7 @@ mod tests {
 
     #[test]
     fn a_clip_already_at_the_right_shape_is_left_alone() {
-        assert_eq!(centre_crop(1080, 1920), (0, 0, 0, 0));
+        assert_eq!(centre_crop(1080, 1920, NINE_BY_SIXTEEN), (0, 0, 0, 0));
     }
 
     #[test]
@@ -541,7 +654,7 @@ mod probe {
         let _ = std::fs::remove_file(&destination);
 
         let started = std::time::Instant::now();
-        match super::to_vertical(std::path::Path::new(&source), &destination, |_, _| {}) {
+        match super::to_vertical(std::path::Path::new(&source), &destination, norisk_ipc::ClipShape::Vertical, &[], |_, _| {}) {
             Ok(result) => println!(
                 "OK  {}x{}  {:.1}s  {:.1} MB  in {} ms  -> {}",
                 result.width,
@@ -553,5 +666,45 @@ mod probe {
             ),
             Err(e) => println!("FAILED after {} ms: {e:#}", started.elapsed().as_millis()),
         }
+    }
+}
+
+#[cfg(test)]
+mod render_tests {
+    #[test]
+    #[ignore = "needs a real clip in NRC_TEST_CLIP"]
+    fn a_real_clip_can_be_squared_and_blurred() {
+        let source = std::path::PathBuf::from(std::env::var("NRC_TEST_CLIP").unwrap());
+        let destination = std::env::temp_dir().join("nrc-overlay-test.mp4");
+        let _ = std::fs::remove_file(&destination);
+
+        let overlays = vec![norisk_ipc::ClipOverlay {
+            kind: norisk_ipc::OverlayKind::Blur { strength: 12 },
+            left: 0.0,
+            top: 0.0,
+            width: 0.45,
+            height: 0.22,
+            start_seconds: 0.0,
+            end_seconds: 999.0,
+        }];
+
+        let result = super::to_vertical(
+            &source,
+            &destination,
+            norisk_ipc::ClipShape::Square,
+            &overlays,
+            |_, _| {},
+        )
+        .unwrap();
+
+        assert_eq!(result.width, result.height, "a square export was not square");
+        println!(
+            "{}x{}  {:.1}s  {:.1} MB  -> {}",
+            result.width,
+            result.height,
+            result.duration_seconds,
+            result.size_bytes as f64 / 1e6,
+            destination.display(),
+        );
     }
 }

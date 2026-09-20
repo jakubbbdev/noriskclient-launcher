@@ -1200,6 +1200,8 @@ impl Engine {
                 match crate::vertical::to_vertical(
                     &request.source,
                     &request.destination,
+                    request.shape,
+                    &request.overlays,
                     report,
                 ) {
                     Ok(result) => {
