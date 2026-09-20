@@ -138,6 +138,8 @@ pub struct ClipConfig {
     #[serde(default)]
     pub microphone_denoise: bool,
     #[serde(default)]
+    pub excluded_audio_executable: Option<String>,
+    #[serde(default)]
     pub output_dir: Option<PathBuf>,
     #[serde(default = "default_clip_max_storage_gb")]
     pub max_storage_gb: u32,
@@ -179,6 +181,7 @@ impl Default for ClipConfig {
             microphone_device_id: None,
             microphone_volume: default_volume(),
             microphone_denoise: false,
+            excluded_audio_executable: None,
             output_dir: None,
             max_storage_gb: default_clip_max_storage_gb(),
             pre_roll_seconds: default_clip_pre_roll(),
@@ -321,6 +324,7 @@ impl ClipConfig {
             microphone_device_id: self.microphone_device_id.clone(),
             microphone_volume: self.microphone_volume,
             microphone_denoise: self.microphone_denoise,
+            excluded_audio_executable: self.excluded_audio_executable.clone(),
             output_dir: self.resolved_output_dir(),
         }
     }

@@ -393,6 +393,41 @@ impl Engine {
         Ok(())
     }
 
+    fn system_source(
+        &self,
+        device: crate::audio::wasapi::AudioSource,
+    ) -> crate::audio::wasapi::AudioSource {
+        use crate::audio::wasapi::AudioSource;
+
+        let Some(executable) = self
+            .config
+            .excluded_audio_executable
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+        else {
+            return device;
+        };
+
+        if self.config.audio_device_id.as_deref().is_some_and(|id| !id.is_empty()) {
+            log::warn!(
+                "{executable} cannot be kept out of the clip while a specific audio device is chosen; recording the device as it is"
+            );
+            return device;
+        }
+
+        match crate::audio::wasapi::pid_of_executable(executable) {
+            Some(pid) => {
+                log::info!("Keeping {executable} (pid {pid}) out of the clip's audio");
+                AudioSource::EverythingExcept(pid)
+            }
+            None => {
+                log::info!("{executable} is not running, so there is nothing to keep out");
+                device
+            }
+        }
+    }
+
     fn audio_plan(&self, pid: u32) -> AudioPlan {
         use crate::audio::wasapi::AudioSource;
         use crate::audio::Track;
@@ -405,7 +440,7 @@ impl Engine {
 
         let mut plan = match self.config.audio_source {
             AudioSourceChoice::System => {
-                AudioPlan::single(device, gain(self.config.other_volume))
+                AudioPlan::single(self.system_source(device), gain(self.config.other_volume))
             }
             AudioSourceChoice::GameOnly => {
                 AudioPlan::single(AudioSource::Process(pid), gain(self.config.game_volume))
@@ -1838,6 +1873,7 @@ fn needs_restart(current: &CaptureConfig, next: &CaptureConfig) -> bool {
         || current.microphone_device_id != next.microphone_device_id
         || current.microphone_volume != next.microphone_volume
         || current.microphone_denoise != next.microphone_denoise
+        || current.excluded_audio_executable != next.excluded_audio_executable
 }
 
 fn free_path(dir: &std::path::Path, stamp: &str, reason: &str) -> std::path::PathBuf {
@@ -1956,6 +1992,10 @@ mod tests {
 
         let mut next = base();
         next.microphone_device_id = Some("another".into());
+        assert!(needs_restart(&base(), &next));
+
+        let mut next = base();
+        next.excluded_audio_executable = Some("Spotify.exe".into());
         assert!(needs_restart(&base(), &next));
     }
 
