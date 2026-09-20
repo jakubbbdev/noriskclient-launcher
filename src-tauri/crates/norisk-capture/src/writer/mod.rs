@@ -474,7 +474,7 @@ mod tests {
         let destination = std::env::temp_dir().join("nrc-colour-test.mp4");
         let _ = std::fs::remove_file(&destination);
 
-        crate::trim::trim(&source, &destination, 0.0, 2.0, &[]).unwrap();
+        crate::trim::trim(&source, &destination, 0.0, 2.0, None, None, &[]).unwrap();
 
         let probe = std::process::Command::new("ffprobe")
             .args([

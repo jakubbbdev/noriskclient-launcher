@@ -1316,6 +1316,8 @@ impl Engine {
             &request.destination,
             request.start_seconds,
             request.end_seconds,
+            request.video_start_seconds,
+            request.video_end_seconds,
             &request.levels,
         ) {
             Ok(result) => {

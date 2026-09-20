@@ -24,6 +24,8 @@ pub fn trim(
     destination: &Path,
     start_seconds: f64,
     end_seconds: f64,
+    video_start_seconds: Option<f64>,
+    video_end_seconds: Option<f64>,
     levels: &[norisk_ipc::TrackLevel],
 ) -> Result<TrimResult> {
     let clip = read(source)?;
@@ -34,21 +36,17 @@ pub fn trim(
     let want_start = clip.first_pts + (start_seconds * TIME_BASE_DEN as f64) as i64;
     let want_end = clip.first_pts + (end_seconds * TIME_BASE_DEN as f64) as i64;
 
-    let begin = clip
-        .video
-        .iter()
-        .filter(|p| p.keyframe && p.pts <= want_start)
-        .map(|p| p.pts)
-        .next_back()
-        .unwrap_or(clip.first_pts);
+    let begin = keyframe_at_or_before(&clip.video, want_start, clip.first_pts);
 
-    let video: Vec<Packet> = clip
-        .video
-        .iter()
-        .skip_while(|p| p.pts < begin)
-        .take_while(|p| p.pts <= want_end)
-        .cloned()
-        .collect();
+    let (picture_start, picture_end) = picture_window(
+        video_start_seconds,
+        video_end_seconds,
+        clip.first_pts,
+        want_start,
+        want_end,
+    );
+
+    let video = windowed_video(&clip.video, begin, picture_start, picture_end);
 
     if video.is_empty() {
         bail!("no frames fall inside {start_seconds:.1}s to {end_seconds:.1}s");
@@ -56,8 +54,8 @@ pub fn trim(
 
     let audio = windowed_audio(&clip.audio, levels, clip.first_pts, begin, want_end);
 
-    let end_pts = video.last().map(|p| p.pts).unwrap_or(want_end);
     let audio_track = build_audio(&audio, levels)?;
+    let end_pts = furthest_pts(&video, &audio_track, want_end);
 
     let bytes = video.iter().map(|p| p.len() as u64).sum::<u64>()
         + audio_track
@@ -84,6 +82,55 @@ pub fn trim(
         start_seconds: (want_start.max(begin) - clip.first_pts) as f64 / TIME_BASE_DEN as f64,
         end_seconds: (end_pts - clip.first_pts) as f64 / TIME_BASE_DEN as f64,
     })
+}
+
+fn keyframe_at_or_before(packets: &[Packet], pts: i64, fallback: i64) -> i64 {
+    packets
+        .iter()
+        .filter(|p| p.keyframe && p.pts <= pts)
+        .map(|p| p.pts)
+        .next_back()
+        .unwrap_or(fallback)
+}
+
+fn picture_window(
+    start_seconds: Option<f64>,
+    end_seconds: Option<f64>,
+    origin: i64,
+    begin: i64,
+    end: i64,
+) -> (i64, i64) {
+    let at = |seconds: Option<f64>| {
+        seconds.filter(|s| s.is_finite()).map(|s| {
+            origin
+                .saturating_add((s * TIME_BASE_DEN as f64) as i64)
+                .clamp(begin, end)
+        })
+    };
+
+    let start = at(start_seconds).unwrap_or(begin);
+    (start, at(end_seconds).unwrap_or(end).max(start))
+}
+
+fn windowed_video(packets: &[Packet], floor: i64, start: i64, end: i64) -> Vec<Packet> {
+    let from = keyframe_at_or_before(packets, start, floor).max(floor);
+    packets
+        .iter()
+        .skip_while(|p| p.pts < from)
+        .take_while(|p| p.pts <= end)
+        .cloned()
+        .collect()
+}
+
+fn furthest_pts(video: &[Packet], audio: &[AudioTrack], fallback: i64) -> i64 {
+    let last_video = video.last().map(|p| p.pts);
+    let last_audio = audio
+        .iter()
+        .flat_map(|track| track.packets.iter())
+        .map(|p| p.pts)
+        .max();
+
+    last_video.max(last_audio).unwrap_or(fallback)
 }
 
 fn windowed_audio(
@@ -606,6 +653,158 @@ mod tests {
             (want_end - last) < TIME_BASE_DEN as i64 / 60,
             "the last kept frame should sit within one frame of the request"
         );
+    }
+
+    fn cut_as_before(packets: &[Packet], begin: i64, end: i64) -> Vec<Packet> {
+        packets
+            .iter()
+            .skip_while(|p| p.pts < begin)
+            .take_while(|p| p.pts <= end)
+            .cloned()
+            .collect()
+    }
+
+    #[test]
+    fn a_clip_without_a_picture_window_keeps_exactly_the_frames_it_kept_before() {
+        let packets = ten_seconds();
+        let second = TIME_BASE_DEN as i64;
+
+        for (want_start, want_end) in [(0, 10 * second), (5 * second, 8 * second), (second / 3, 9 * second)] {
+            let begin = keyframe_at_or_before(&packets, want_start, 0);
+            let (start, end) = picture_window(None, None, 0, want_start, want_end);
+
+            assert_eq!(
+                windowed_video(&packets, begin, start, end),
+                cut_as_before(&packets, begin, want_end),
+                "the clip window alone must select the very same frames"
+            );
+        }
+    }
+
+    #[test]
+    fn a_later_picture_start_still_begins_on_a_keyframe() {
+        let packets = ten_seconds();
+        let second = TIME_BASE_DEN as i64;
+        let begin = keyframe_at_or_before(&packets, 0, 0);
+
+        let (start, end) = picture_window(Some(5.0), None, 0, 0, 10 * second);
+        let video = windowed_video(&packets, begin, start, end);
+
+        assert!(video[0].keyframe, "the picture would decode into mush");
+        assert_eq!(
+            video[0].pts,
+            4 * second,
+            "5 s should fall back to the keyframe at 4 s, exactly as the clip's own start does"
+        );
+    }
+
+    #[test]
+    fn a_later_picture_start_never_reaches_back_past_the_cut() {
+        let packets = ten_seconds();
+        let second = TIME_BASE_DEN as i64;
+        let want_start = 6 * second;
+        let begin = keyframe_at_or_before(&packets, want_start, 0);
+
+        let (start, end) = picture_window(Some(7.0), None, 0, want_start, 10 * second);
+        let video = windowed_video(&packets, begin, start, end);
+
+        assert_eq!(
+            video[0].pts, begin,
+            "with no keyframe of its own to land on, the picture keeps the cut's first frame"
+        );
+        assert!(video.iter().all(|p| p.pts >= begin));
+    }
+
+    #[test]
+    fn an_earlier_picture_end_drops_the_frames_after_it() {
+        let packets = ten_seconds();
+        let second = TIME_BASE_DEN as i64;
+
+        let (start, end) = picture_window(None, Some(3.0), 0, 0, 10 * second);
+        let video = windowed_video(&packets, 0, start, end);
+
+        assert_eq!(video.last().unwrap().pts, 3 * second);
+        assert!(video.len() < packets.len());
+    }
+
+    #[test]
+    fn a_picture_window_wider_than_the_cut_is_clamped_rather_than_resurrecting_frames() {
+        let packets = ten_seconds();
+        let second = TIME_BASE_DEN as i64;
+        let (want_start, want_end) = (4 * second, 6 * second);
+        let begin = keyframe_at_or_before(&packets, want_start, 0);
+
+        let (start, end) = picture_window(Some(-100.0), Some(100.0), 0, want_start, want_end);
+        let greedy = windowed_video(&packets, begin, start, end);
+
+        assert_eq!(greedy, cut_as_before(&packets, begin, want_end));
+        assert!(greedy.iter().all(|p| p.pts >= begin && p.pts <= want_end));
+    }
+
+    #[test]
+    fn a_picture_window_that_makes_no_sense_falls_back_to_the_cut() {
+        let second = TIME_BASE_DEN as i64;
+        let (want_start, want_end) = (second, 8 * second);
+
+        for nonsense in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(
+                picture_window(Some(nonsense), Some(nonsense), 0, want_start, want_end),
+                (want_start, want_end),
+                "{nonsense} should count as no picture window at all"
+            );
+        }
+
+        let (start, end) = picture_window(Some(6.0), Some(2.0), 0, want_start, want_end);
+        assert!(end >= start, "a backwards window must not end before it starts");
+    }
+
+    #[test]
+    fn a_picture_window_is_measured_from_the_same_place_as_the_cut_and_the_tracks() {
+        let second = TIME_BASE_DEN as i64;
+        let origin = 5 * second;
+
+        assert_eq!(
+            picture_window(Some(2.0), Some(3.0), origin, origin, origin + 10 * second),
+            (origin + 2 * second, origin + 3 * second)
+        );
+    }
+
+    #[test]
+    fn sound_that_outlasts_the_picture_still_sets_how_long_the_clip_runs() {
+        let second = TIME_BASE_DEN as i64;
+        let video: Vec<Packet> = (0..4).map(|i| frame(i * second, i == 0)).collect();
+        let track = AudioTrack {
+            sample_rate: 48_000,
+            channels: 2,
+            extradata: vec![0x12, 0x10],
+            packets: (0..9).map(|i| frame(i * second, true)).collect(),
+            label: "Mix".to_string(),
+        };
+
+        assert_eq!(furthest_pts(&video, &[track.clone()], 0), 8 * second);
+        assert_eq!(furthest_pts(&video, &[], 0), 3 * second);
+        assert_eq!(furthest_pts(&[], &[], 7 * second), 7 * second);
+    }
+
+    #[test]
+    fn a_picture_window_on_its_own_leaves_the_recorded_mix_alone() {
+        let packets = ten_seconds();
+        let second = TIME_BASE_DEN as i64;
+        let audio = vec![source("Mix", 10), source("Game", 10)];
+
+        let built = build_audio(&audio, &[]).unwrap();
+        let (start, end) = picture_window(Some(2.0), Some(6.0), 0, 0, 10 * second);
+        let video = windowed_video(&packets, 0, start, end);
+
+        assert_eq!(
+            built[0].packets, audio[0].packets,
+            "a picture-only window must not send the sound through the mixer"
+        );
+        assert!(
+            !built[0].packets.is_empty(),
+            "a picture-only window must not throw the sound away"
+        );
+        assert!(video.len() < packets.len(), "the picture was not narrowed at all");
     }
 
     fn source(label: &str, packets: usize) -> AudioSource {
