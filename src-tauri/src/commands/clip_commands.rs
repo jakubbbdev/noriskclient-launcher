@@ -356,6 +356,8 @@ pub async fn clip_trim(
     path: std::path::PathBuf,
     start_seconds: f64,
     end_seconds: f64,
+    video_start_seconds: Option<f64>,
+    video_end_seconds: Option<f64>,
     levels: Option<Vec<norisk_ipc::TrackLevel>>,
 ) -> Result<std::path::PathBuf, CommandError> {
     if !start_seconds.is_finite() || !end_seconds.is_finite() || end_seconds <= start_seconds {
@@ -376,6 +378,8 @@ pub async fn clip_trim(
             destination: destination.clone(),
             start_seconds,
             end_seconds,
+            video_start_seconds,
+            video_end_seconds,
             levels: levels.unwrap_or_default(),
         }))?;
 
