@@ -94,7 +94,7 @@ export interface ExportedClip {
   sizeBytes: number;
 }
 
-export type ClipShape = "vertical" | "square" | "wide";
+export type ClipShape = "original" | "vertical" | "square" | "wide";
 
 export type ClipCorner = "top_left" | "top_right" | "bottom_left" | "bottom_right";
 

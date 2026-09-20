@@ -101,9 +101,7 @@ function grey(colour: number): string {
   return `#${colour.toString(16).padStart(6, "0")}`;
 }
 
-type ShapeChoice = ClipShape | "original";
-
-const SHAPES: { choice: ShapeChoice; ratio: number | null; label: string }[] = [
+const SHAPES: { choice: ClipShape; ratio: number | null; label: string }[] = [
   { choice: "original", ratio: null, label: "clips.editor.shape.original" },
   { choice: "vertical", ratio: 9 / 16, label: "clips.editor.shape.vertical" },
   { choice: "square", ratio: 1, label: "clips.editor.shape.square" },
@@ -212,7 +210,7 @@ export function ClipTrimmer({
   const [ratio, setRatio] = useState(16 / 9);
   const [overlays, setOverlays] = useState<ClipOverlay[]>([]);
   const [chosen, setChosen] = useState<number | null>(null);
-  const [shape, setShape] = useState<ShapeChoice>("original");
+  const [shape, setShape] = useState<ClipShape>("original");
   const [panel, setPanel] = useState<Panel>("tools");
   const [boxDrag, setBoxDrag] = useState<BoxDrag | null>(null);
   const [barDrag, setBarDrag] = useState<BarDrag | null>(null);
@@ -560,7 +558,6 @@ export function ClipTrimmer({
   }, [path]);
 
   const runExport = useCallback(async () => {
-    if (shape === "original") return;
     setStage({ kind: "running", done: 0, total: 0 });
     try {
       await exportVertical(path, shape, overlays);
@@ -690,8 +687,6 @@ export function ClipTrimmer({
           {name}
         </span>
 
-        <StateBadge stage={stage} percent={exportPercent} color={accentColor.value} t={t} />
-
         <span className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-1 font-smallcaps text-xs uppercase tracking-wider text-white/50">
           {t("clips.editor.shape.label")}: {t(shapeLabel)}
         </span>
@@ -724,7 +719,7 @@ export function ClipTrimmer({
             variant="default"
             size="sm"
             onClick={() => void runExport()}
-            disabled={busy || shape === "original" || stage.kind === "running"}
+            disabled={busy || stage.kind === "running"}
             icon={
               <Icon
                 icon={stage.kind === "running" ? "svg-spinners:ring-resize" : "solar:smartphone-bold"}
@@ -876,11 +871,6 @@ export function ClipTrimmer({
                   </button>
                 ))}
               </div>
-              {shape === "original" && (
-                <p className="font-minecraft text-xs leading-relaxed text-white/50">
-                  {t("clips.editor.export.needs_shape")}
-                </p>
-              )}
             </>
           )}
         </aside>
@@ -1292,41 +1282,6 @@ function PanelTitle({ children, color }: { children: ReactNode; color: string })
     >
       {children}
     </h3>
-  );
-}
-
-function StateBadge({
-  stage,
-  percent,
-  color,
-  t,
-}: {
-  stage: ExportStage;
-  percent: number | null;
-  color: string;
-  t: Translate;
-}) {
-  const look =
-    stage.kind === "running"
-      ? { icon: "svg-spinners:ring-resize", tone: "text-white", text: percent === null ? t("clips.editor.export.starting") : t("clips.editor.export.progress", { percent }) }
-      : stage.kind === "done"
-        ? { icon: "solar:check-circle-bold", tone: "text-emerald-300", text: t("clips.editor.export.done") }
-        : stage.kind === "failed"
-          ? { icon: "solar:danger-triangle-bold", tone: "text-red-300", text: stage.why }
-          : { icon: "solar:stop-circle-bold", tone: "text-white/60", text: t("clips.editor.state.ready") };
-
-  return (
-    <span
-      title={look.text}
-      className={cn(
-        "flex max-w-[18rem] items-center gap-1.5 rounded-lg border border-white/10 bg-black/20 px-2.5 py-1 font-minecraft text-xs",
-        look.tone,
-      )}
-      style={stage.kind === "running" ? { borderColor: `${color}80` } : undefined}
-    >
-      <Icon icon={look.icon} className="h-3.5 w-3.5 shrink-0" />
-      <span className="truncate">{look.text}</span>
-    </span>
   );
 }
 

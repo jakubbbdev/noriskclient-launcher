@@ -50,6 +50,10 @@ fn centre_crop(width: u32, height: u32, ratio: Ratio) -> (u32, u32, u32, u32) {
     )
 }
 
+fn crop_ratio(shape: norisk_ipc::ClipShape, width: u32, height: u32) -> Ratio {
+    shape.ratio().unwrap_or((width as i64, height as i64))
+}
+
 pub fn to_vertical(
     source: &Path,
     destination: &Path,
@@ -58,7 +62,7 @@ pub fn to_vertical(
     progress: impl Fn(u32, u32),
 ) -> Result<VerticalResult> {
     let clip = crate::trim::read(source)?;
-    let ratio = shape.ratio();
+    let ratio = crop_ratio(shape, clip.track.width, clip.track.height);
 
     let (left, right, top, bottom) = centre_crop(clip.track.width, clip.track.height, ratio);
     let width = clip.track.width.saturating_sub(left + right);
@@ -528,7 +532,7 @@ mod tests {
     use super::*;
 
     fn nine_by_sixteen() -> Ratio {
-        norisk_ipc::ClipShape::Vertical.ratio()
+        norisk_ipc::ClipShape::Vertical.ratio().unwrap()
     }
 
     fn cropped(width: u32, height: u32) -> (u32, u32) {
@@ -553,7 +557,7 @@ mod tests {
             norisk_ipc::ClipShape::Square,
             norisk_ipc::ClipShape::Wide,
         ] {
-            let ratio = shape.ratio();
+            let ratio = shape.ratio().unwrap();
             for (width, height) in [(1920, 1080), (2560, 1440), (1280, 720)] {
                 let (w, h) = cropped_to(width, height, ratio);
                 let got = w as f64 / h as f64;
@@ -564,6 +568,19 @@ mod tests {
                 );
                 assert!(w <= width && h <= height, "{shape:?} grew the picture");
             }
+        }
+    }
+
+    #[test]
+    fn original_keeps_the_source_size() {
+        for (width, height) in [(1920, 1080), (2560, 1440), (1080, 1920), (1000, 1000)] {
+            let ratio = crop_ratio(norisk_ipc::ClipShape::Original, width, height);
+            assert_eq!(
+                centre_crop(width, height, ratio),
+                (0, 0, 0, 0),
+                "{width}x{height} should lose nothing",
+            );
+            assert_eq!(cropped_to(width, height, ratio), (width, height));
         }
     }
 

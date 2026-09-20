@@ -878,14 +878,16 @@ pub enum ClipShape {
     Vertical,
     Square,
     Wide,
+    Original,
 }
 
 impl ClipShape {
-    pub fn ratio(self) -> (i64, i64) {
+    pub fn ratio(self) -> Option<(i64, i64)> {
         match self {
-            ClipShape::Vertical => (9, 16),
-            ClipShape::Square => (1, 1),
-            ClipShape::Wide => (21, 9),
+            ClipShape::Vertical => Some((9, 16)),
+            ClipShape::Square => Some((1, 1)),
+            ClipShape::Wide => Some((21, 9)),
+            ClipShape::Original => None,
         }
     }
 }

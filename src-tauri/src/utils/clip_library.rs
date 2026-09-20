@@ -528,6 +528,7 @@ pub fn shaped_destination(
         norisk_ipc::ClipShape::Vertical => "_vertical",
         norisk_ipc::ClipShape::Square => "_square",
         norisk_ipc::ClipShape::Wide => "_wide",
+        norisk_ipc::ClipShape::Original => "_edited",
     };
     beside(dir, source, suffix, "mp4")
 }
