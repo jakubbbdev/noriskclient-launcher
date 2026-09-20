@@ -475,23 +475,37 @@ export function ClipTrimmer({
   const shapeLabel = SHAPES.find((entry) => entry.choice === shape)?.label ?? SHAPES[0].label;
 
   return (
-    <div className="fixed inset-0 z-[1000] flex flex-col bg-black/95 backdrop-blur-md-anyos">
-      <header className="relative flex shrink-0 items-center gap-3 border-b border-white/10 bg-black/50 px-4 py-2.5">
+    <div className="fixed inset-0 z-[1000] flex bg-black/70 p-4 backdrop-blur-md-anyos">
+      <div
+        className="relative flex min-h-0 w-full flex-col overflow-hidden rounded-lg border border-b-2"
+        style={{
+          backgroundColor: `${accentColor.value}20`,
+          borderColor: `${accentColor.value}80`,
+          borderBottomColor: accentColor.value,
+        }}
+      >
+      <header
+        className="relative flex shrink-0 items-center gap-3 border-b-2 px-5 py-3.5"
+        style={{
+          borderColor: `${accentColor.value}60`,
+          backgroundColor: `${accentColor.value}30`,
+        }}
+      >
         <Icon
           icon="solar:videocamera-record-bold"
-          className="h-5 w-5 shrink-0"
+          className="h-6 w-6 shrink-0"
           style={{ color: accentColor.value }}
         />
         <span
           title={name}
-          className="max-w-[20rem] truncate font-minecraft text-base normal-case text-white"
+          className="max-w-[20rem] truncate font-minecraft text-lg normal-case text-white"
         >
           {name}
         </span>
 
         <StateBadge stage={stage} percent={exportPercent} color={accentColor.value} t={t} />
 
-        <span className="rounded border border-white/10 bg-black/40 px-2 py-1 font-smallcaps text-xs uppercase tracking-wider text-white/50">
+        <span className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-1 font-smallcaps text-xs uppercase tracking-wider text-white/50">
           {t("clips.editor.shape.label")}: {t(shapeLabel)}
         </span>
 
@@ -554,7 +568,7 @@ export function ClipTrimmer({
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <nav className="flex w-[4.5rem] shrink-0 flex-col gap-1 border-r border-white/10 bg-black/40 p-2">
+        <nav className="flex w-[5rem] shrink-0 flex-col gap-2 border-r border-white/10 bg-black/20 p-3">
           {PANELS.map((entry) => (
             <button
               key={entry.id}
@@ -562,10 +576,10 @@ export function ClipTrimmer({
               onClick={() => setPanel(entry.id)}
               aria-pressed={panel === entry.id}
               className={cn(
-                "flex flex-col items-center gap-1 rounded-lg border px-1 py-2 transition-colors",
+                "flex flex-col items-center gap-1.5 rounded-lg border px-1 py-2.5 transition-colors",
                 panel === entry.id
                   ? "text-white"
-                  : "border-transparent text-white/50 hover:bg-white/5 hover:text-white",
+                  : "border-white/10 bg-black/20 text-white/50 hover:border-white/20 hover:text-white",
               )}
               style={
                 panel === entry.id
@@ -581,11 +595,11 @@ export function ClipTrimmer({
           ))}
         </nav>
 
-        <aside className="flex w-60 shrink-0 flex-col gap-3 overflow-y-auto border-r border-white/10 bg-black/30 p-3">
+        <aside className="custom-scrollbar flex w-64 shrink-0 flex-col gap-4 overflow-y-auto border-r border-white/10 bg-black/20 p-4">
           {panel === "tools" && (
             <>
-              <PanelTitle>{t("clips.editor.tools")}</PanelTitle>
-              <div className="flex flex-col gap-1.5">
+              <PanelTitle color={accentColor.value}>{t("clips.editor.tools")}</PanelTitle>
+              <div className="flex flex-col gap-2">
                 {TOOLS.map((tool) => (
                   <button
                     key={tool.seed.kind}
@@ -593,7 +607,7 @@ export function ClipTrimmer({
                     onClick={() => addOverlay(tool.seed)}
                     disabled={busy}
                     className={cn(
-                      "flex items-center gap-2.5 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 text-left font-minecraft text-sm text-white/80 transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white",
+                      "flex items-center gap-2.5 rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-left font-minecraft text-sm text-white/80 transition-colors hover:border-white/20 hover:text-white",
                       busy && "cursor-not-allowed opacity-40",
                     )}
                   >
@@ -611,7 +625,7 @@ export function ClipTrimmer({
 
           {panel === "audio" && (
             <>
-              <PanelTitle>{t("clips.editor.audio")}</PanelTitle>
+              <PanelTitle color={accentColor.value}>{t("clips.editor.audio")}</PanelTitle>
               {adjustable.length === 0 ? (
                 <p className="font-minecraft text-xs leading-relaxed text-white/50">
                   {t("clips.editor.audio.none")}
@@ -650,8 +664,8 @@ export function ClipTrimmer({
 
           {panel === "format" && (
             <>
-              <PanelTitle>{t("clips.editor.shape.label")}</PanelTitle>
-              <div className="grid grid-cols-2 gap-1.5">
+              <PanelTitle color={accentColor.value}>{t("clips.editor.shape.label")}</PanelTitle>
+              <div className="grid grid-cols-2 gap-2">
                 {SHAPES.map((entry) => (
                   <button
                     key={entry.choice}
@@ -659,10 +673,10 @@ export function ClipTrimmer({
                     onClick={() => setShape(entry.choice)}
                     disabled={busy}
                     className={cn(
-                      "rounded-lg border px-2 py-2 font-minecraft text-xs transition-colors",
+                      "rounded-lg border px-2 py-2.5 font-minecraft text-xs transition-colors",
                       shape === entry.choice
                         ? "text-white"
-                        : "border-white/10 bg-black/40 text-white/60 hover:text-white",
+                        : "border-white/10 bg-black/20 text-white/60 hover:border-white/20 hover:text-white",
                       busy && "cursor-not-allowed opacity-40",
                     )}
                     style={
@@ -684,11 +698,11 @@ export function ClipTrimmer({
           )}
         </aside>
 
-        <main className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden p-4">
+        <main className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden p-6">
           <div
             ref={frameRef}
-            className="relative w-full overflow-hidden rounded-lg border border-white/10 bg-black"
-            style={{ aspectRatio: `${ratio}`, maxWidth: `calc(44vh * ${ratio})` }}
+            className="relative w-full overflow-hidden rounded-lg border border-white/10 bg-black shadow-2xl"
+            style={{ aspectRatio: `${ratio}`, maxWidth: `calc(48vh * ${ratio})` }}
           >
             <video
               ref={videoRef}
@@ -758,8 +772,8 @@ export function ClipTrimmer({
           </div>
         </main>
 
-        <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/10 bg-black/30 p-3">
-          <PanelTitle>{t("clips.editor.inspector")}</PanelTitle>
+        <aside className="custom-scrollbar flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-l border-white/10 bg-black/20 p-4">
+          <PanelTitle color={accentColor.value}>{t("clips.editor.inspector")}</PanelTitle>
 
           {picked === null || chosen === null ? (
             <p className="font-minecraft text-xs leading-relaxed text-white/50">
@@ -767,7 +781,13 @@ export function ClipTrimmer({
             </p>
           ) : (
             <>
-              <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2">
+              <div
+                className="flex items-center gap-2 rounded-lg border px-3 py-2.5"
+                style={{
+                  borderColor: `${accentColor.value}80`,
+                  backgroundColor: `${accentColor.value}20`,
+                }}
+              >
                 <Icon
                   icon={OVERLAY_ICON[picked.kind]}
                   className="h-4 w-4 shrink-0"
@@ -885,7 +905,7 @@ export function ClipTrimmer({
         </aside>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2 border-t border-white/10 bg-black/40 px-3 py-2">
+      <div className="flex shrink-0 items-center gap-2 border-t border-white/10 bg-black/20 px-5 py-3">
         <ClipIconButton
           icon="solar:restart-bold"
           label={t("clips.editor.transport.to_start")}
@@ -902,20 +922,20 @@ export function ClipTrimmer({
           onClick={preview}
         />
 
-        <span className="ml-1 font-minecraft text-sm tabular-nums text-white">
+        <span className="ml-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-1 font-minecraft text-sm tabular-nums text-white/90">
           {formatTime(playhead)}
           <span className="text-white/40"> / {formatTime(duration)}</span>
         </span>
 
-        <div className="ml-auto flex items-center gap-5">
+        <div className="ml-auto flex items-center gap-6">
           <Readout label={t("clips.trim.from")} value={formatTime(start)} />
           <Readout label={t("clips.trim.kept_label")} value={`${kept.toFixed(1)} s`} strong />
           <Readout label={t("clips.trim.to")} value={formatTime(end)} />
         </div>
       </div>
 
-      <div className="max-h-[38vh] shrink-0 overflow-y-auto border-t border-white/10 bg-black/50 px-3 py-2">
-        <div className="relative flex select-none flex-col gap-1">
+      <div className="custom-scrollbar max-h-[34vh] shrink-0 overflow-y-auto border-t border-white/10 bg-black/20 px-5 py-3">
+        <div className="relative flex select-none flex-col gap-1.5">
           <div className="flex">
             <div className="w-44 shrink-0" />
             <div
@@ -1043,19 +1063,23 @@ export function ClipTrimmer({
           </div>
         </div>
 
-        <p className="mt-1.5 min-h-[1.25rem] font-minecraft text-xs text-white/50">
+        <p className="mt-2.5 min-h-[1.25rem] font-minecraft text-xs text-white/50">
           {overlays.length > 0 ? t("clips.editor.overlay.hint") : t("clips.trim.hint")}
         </p>
+      </div>
       </div>
     </div>
   );
 }
 
-function PanelTitle({ children }: { children: ReactNode }) {
+function PanelTitle({ children, color }: { children: ReactNode; color: string }) {
   return (
-    <span className="font-smallcaps text-[0.7rem] uppercase tracking-wider text-white/40">
+    <h3
+      className="border-b border-white/10 pb-2 font-smallcaps text-lg leading-none tracking-wide"
+      style={{ color }}
+    >
       {children}
-    </span>
+    </h3>
   );
 }
 
@@ -1083,7 +1107,7 @@ function StateBadge({
     <span
       title={look.text}
       className={cn(
-        "flex max-w-[18rem] items-center gap-1.5 rounded border border-white/10 bg-black/40 px-2 py-1 font-minecraft text-xs",
+        "flex max-w-[18rem] items-center gap-1.5 rounded-lg border border-white/10 bg-black/20 px-2.5 py-1 font-minecraft text-xs",
         look.tone,
       )}
       style={stage.kind === "running" ? { borderColor: `${color}80` } : undefined}
@@ -1131,7 +1155,7 @@ function Lane({
     <div className="flex">
       <div
         className={cn(
-          "flex w-44 shrink-0 items-center gap-2 rounded-l border-y border-l border-white/10 bg-black/40 px-2",
+          "flex w-44 shrink-0 items-center gap-2 rounded-l-lg border-y border-l border-white/10 bg-black/20 px-2.5",
           height,
         )}
         style={active ? { backgroundColor: `${tint}25`, borderColor: `${tint}80` } : undefined}
@@ -1154,7 +1178,7 @@ function Lane({
         role="presentation"
         onPointerDown={onScrub ? (event) => onScrub(event.clientX) : undefined}
         className={cn(
-          "relative min-w-0 flex-1 overflow-hidden rounded-r border border-white/10 bg-black/30",
+          "relative min-w-0 flex-1 overflow-hidden rounded-r-lg border border-white/10 bg-black/20",
           height,
           onScrub && "cursor-ew-resize",
         )}
@@ -1362,7 +1386,7 @@ function Handle({
       />
       <span
         className={cn(
-          "pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 rounded bg-black/80 border border-white/10 px-1.5 py-0.5 font-minecraft text-xs text-white transition-opacity",
+          "pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 rounded-lg bg-black/70 border border-white/10 px-1.5 py-0.5 font-minecraft text-xs text-white transition-opacity",
           active ? "opacity-100" : "opacity-0 group-hover:opacity-100",
         )}
       >
@@ -1473,7 +1497,7 @@ function ShadeChoice({
           onChange={(event) => accept(event.target.value)}
           onBlur={() => setTyped(grey(value))}
           className={cn(
-            "min-w-0 flex-1 rounded border border-white/20 bg-black/30 px-2 py-1 font-minecraft text-sm uppercase text-white/90 outline-none transition-colors",
+            "min-w-0 flex-1 rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5 font-minecraft text-sm uppercase text-white/90 outline-none transition-colors",
             disabled ? "cursor-not-allowed opacity-40" : "hover:border-white/40 focus:border-white/60",
           )}
         />
@@ -1530,10 +1554,10 @@ function CornerChoice({
             title={t(corner.label)}
             onClick={() => onChange(corner.value)}
             className={cn(
-              "flex h-7 w-7 items-center justify-center rounded border transition-colors",
+              "flex h-7 w-7 items-center justify-center rounded-lg border transition-colors",
               value === corner.value
                 ? "text-white"
-                : "border-white/10 bg-black/30 text-white/50 hover:text-white",
+                : "border-white/10 bg-black/20 text-white/50 hover:border-white/20 hover:text-white",
               disabled && "cursor-not-allowed opacity-40",
             )}
             style={
