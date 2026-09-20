@@ -313,15 +313,20 @@ pub async fn clip_prepare_preview(path: std::path::PathBuf) -> Result<(), Comman
 #[tauri::command]
 pub async fn clip_export_vertical(
     path: std::path::PathBuf,
+    shape: Option<norisk_ipc::ClipShape>,
+    overlays: Option<Vec<norisk_ipc::ClipOverlay>>,
 ) -> Result<std::path::PathBuf, CommandError> {
     let dir = clip_dir().await?;
-    let destination = crate::utils::clip_library::vertical_destination(&dir, &path)?;
+    let shape = shape.unwrap_or_default();
+    let destination = crate::utils::clip_library::shaped_destination(&dir, &path, shape)?;
 
     let state = State::get().await?;
     state.capture_supervisor.send(LauncherToCapture::ExportVertical(
         norisk_ipc::ExportVerticalRequest {
             source: path,
             destination: destination.clone(),
+            shape,
+            overlays: overlays.unwrap_or_default(),
         },
     ))?;
 

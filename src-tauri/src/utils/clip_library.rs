@@ -519,6 +519,19 @@ pub fn vertical_destination(dir: &Path, source: &Path) -> Result<PathBuf> {
     beside(dir, source, "_vertical", "mp4")
 }
 
+pub fn shaped_destination(
+    dir: &Path,
+    source: &Path,
+    shape: norisk_ipc::ClipShape,
+) -> Result<PathBuf> {
+    let suffix = match shape {
+        norisk_ipc::ClipShape::Vertical => "_vertical",
+        norisk_ipc::ClipShape::Square => "_square",
+        norisk_ipc::ClipShape::Wide => "_wide",
+    };
+    beside(dir, source, suffix, "mp4")
+}
+
 pub fn trimmed_destination(dir: &Path, source: &Path) -> Result<PathBuf> {
     beside(dir, source, "_trimmed", "mp4")
 }
