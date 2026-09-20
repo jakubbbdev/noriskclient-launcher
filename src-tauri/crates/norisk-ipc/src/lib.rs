@@ -766,6 +766,10 @@ pub struct TrimClipRequest {
     pub start_seconds: f64,
     pub end_seconds: f64,
     #[serde(default)]
+    pub video_start_seconds: Option<f64>,
+    #[serde(default)]
+    pub video_end_seconds: Option<f64>,
+    #[serde(default)]
     pub levels: Vec<TrackLevel>,
 }
 
