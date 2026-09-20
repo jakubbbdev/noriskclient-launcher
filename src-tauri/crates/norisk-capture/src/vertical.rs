@@ -141,13 +141,13 @@ pub fn to_vertical(
     })
 }
 
-struct Decoder {
+pub(crate) struct Decoder {
     context: *mut ff::AVCodecContext,
     packet: *mut ff::AVPacket,
 }
 
 impl Decoder {
-    fn open(track: &TrackInfo) -> Result<Self> {
+    pub(crate) fn open(track: &TrackInfo) -> Result<Self> {
         unsafe {
             let id = match track.codec {
                 norisk_ipc::ClipCodec::H264 => ff::AVCodecID::AV_CODEC_ID_H264,
@@ -199,7 +199,7 @@ impl Decoder {
         }
     }
 
-    fn push(&mut self, packet: &Packet) -> Result<Vec<Frame>> {
+    pub(crate) fn push(&mut self, packet: &Packet) -> Result<Vec<Frame>> {
         unsafe {
             ff::av_packet_unref(self.packet);
             let rc = ff::av_new_packet(self.packet, packet.len() as i32);
@@ -225,7 +225,7 @@ impl Decoder {
         self.drain()
     }
 
-    fn finish(&mut self) -> Result<Vec<Frame>> {
+    pub(crate) fn finish(&mut self) -> Result<Vec<Frame>> {
         unsafe {
             let rc = ff::avcodec_send_packet(self.context, std::ptr::null());
             if rc < 0 && rc != ff::AVERROR_EOF {
@@ -261,7 +261,7 @@ impl Drop for Decoder {
     }
 }
 
-struct Frame(*mut ff::AVFrame);
+pub(crate) struct Frame(pub(crate) *mut ff::AVFrame);
 
 impl Frame {
     fn alloc() -> Result<Self> {
