@@ -136,6 +136,8 @@ pub struct ClipConfig {
     #[serde(default = "default_volume")]
     pub microphone_volume: u32,
     #[serde(default)]
+    pub microphone_denoise: bool,
+    #[serde(default)]
     pub output_dir: Option<PathBuf>,
     #[serde(default = "default_clip_max_storage_gb")]
     pub max_storage_gb: u32,
@@ -176,6 +178,7 @@ impl Default for ClipConfig {
             capture_microphone: false,
             microphone_device_id: None,
             microphone_volume: default_volume(),
+            microphone_denoise: false,
             output_dir: None,
             max_storage_gb: default_clip_max_storage_gb(),
             pre_roll_seconds: default_clip_pre_roll(),
@@ -317,6 +320,7 @@ impl ClipConfig {
             capture_microphone: self.capture_microphone,
             microphone_device_id: self.microphone_device_id.clone(),
             microphone_volume: self.microphone_volume,
+            microphone_denoise: self.microphone_denoise,
             output_dir: self.resolved_output_dir(),
         }
     }
