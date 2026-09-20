@@ -9,9 +9,6 @@ use crate::encoder::hw::av_error;
 use crate::encoder::video::TIME_BASE_DEN;
 use crate::writer::{write_mp4, TrackInfo};
 
-const VERTICAL_WIDTH: i64 = 9;
-const VERTICAL_HEIGHT: i64 = 16;
-
 type Ratio = (i64, i64);
 
 #[derive(Debug, Clone)]
@@ -524,10 +521,12 @@ unsafe impl Send for Encoder {}
 mod tests {
     use super::*;
 
-    const NINE_BY_SIXTEEN: Ratio = (VERTICAL_WIDTH, VERTICAL_HEIGHT);
+    fn nine_by_sixteen() -> Ratio {
+        norisk_ipc::ClipShape::Vertical.ratio()
+    }
 
     fn cropped(width: u32, height: u32) -> (u32, u32) {
-        cropped_to(width, height, NINE_BY_SIXTEEN)
+        cropped_to(width, height, nine_by_sixteen())
     }
 
     fn cropped_to(width: u32, height: u32, ratio: Ratio) -> (u32, u32) {
@@ -574,7 +573,7 @@ mod tests {
         for (width, height) in [(1920, 1080), (2560, 1440), (3840, 2160), (1280, 720)] {
             let (w, h) = cropped(width, height);
             let ratio = w as f64 / h as f64;
-            let wanted = VERTICAL_WIDTH as f64 / VERTICAL_HEIGHT as f64;
+            let wanted = nine_by_sixteen().0 as f64 / nine_by_sixteen().1 as f64;
             assert!(
                 (ratio - wanted).abs() < 0.01,
                 "{width}x{height} cropped to {w}x{h}, ratio {ratio:.4}",
@@ -584,7 +583,7 @@ mod tests {
 
     #[test]
     fn the_cut_is_centred() {
-        let (left, right, _, _) = centre_crop(1920, 1080, NINE_BY_SIXTEEN);
+        let (left, right, _, _) = centre_crop(1920, 1080, nine_by_sixteen());
         assert!(
             left.abs_diff(right) <= 2,
             "the column should sit in the middle: {left} vs {right}",
@@ -594,7 +593,7 @@ mod tests {
     #[test]
     fn every_offset_is_even() {
         for (width, height) in [(1920, 1080), (2559, 1439), (1281, 721), (3840, 2160)] {
-            let (left, _, top, _) = centre_crop(width, height, NINE_BY_SIXTEEN);
+            let (left, _, top, _) = centre_crop(width, height, nine_by_sixteen());
             assert_eq!(left % 2, 0, "{width}x{height} crops {left} from the left");
             assert_eq!(top % 2, 0, "{width}x{height} crops {top} from the top");
         }
@@ -620,7 +619,7 @@ mod tests {
 
     #[test]
     fn a_clip_already_taller_than_wide_loses_its_top_and_bottom() {
-        let (left, right, top, bottom) = centre_crop(1080, 2400, NINE_BY_SIXTEEN);
+        let (left, right, top, bottom) = centre_crop(1080, 2400, nine_by_sixteen());
         assert_eq!((left, right), (0, 0), "nothing should come off the sides");
         assert!(top > 0 && bottom > 0);
 
@@ -631,7 +630,7 @@ mod tests {
 
     #[test]
     fn a_clip_already_at_the_right_shape_is_left_alone() {
-        assert_eq!(centre_crop(1080, 1920, NINE_BY_SIXTEEN), (0, 0, 0, 0));
+        assert_eq!(centre_crop(1080, 1920, nine_by_sixteen()), (0, 0, 0, 0));
     }
 
     #[test]
