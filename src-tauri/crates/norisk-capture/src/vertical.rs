@@ -326,6 +326,11 @@ impl Encoder {
             };
             (*context).gop_size = (fps * 2) as i32;
             (*context).bit_rate = 8_000_000;
+            (*context).color_primaries = crate::encoder::video::COLOR_PRIMARIES;
+            (*context).color_trc = crate::encoder::video::COLOR_TRANSFER;
+            (*context).colorspace = crate::encoder::video::COLOR_SPACE;
+            (*context).color_range = crate::encoder::video::COLOR_RANGE;
+            (*context).chroma_sample_location = crate::encoder::video::CHROMA_LOCATION;
             (*context).flags |= ff::AV_CODEC_FLAG_GLOBAL_HEADER as i32;
             (*context).thread_count = 0;
             if !(*context).priv_data.is_null() {
