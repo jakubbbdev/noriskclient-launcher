@@ -383,6 +383,7 @@ impl Engine {
             LauncherToCapture::SaveClip(request) => self.save_clip(request)?,
             LauncherToCapture::TrimClip(request) => self.trim_clip(request),
             LauncherToCapture::ExportVertical(request) => self.export_vertical(request),
+            LauncherToCapture::ExportGif(request) => self.export_gif(request),
             LauncherToCapture::PrepareAudioPreview(request) => self.prepare_preview(request),
             LauncherToCapture::Ping { seq } => {
                 let _ = self.events.send(CaptureToLauncher::Pong { seq });
@@ -1199,6 +1200,72 @@ impl Engine {
             self.emit_error(
                 ErrorCode::ClipWrite,
                 format!("could not start the export: {e}"),
+                true,
+            );
+        }
+    }
+
+    fn export_gif(&self, request: norisk_ipc::ExportGifRequest) {
+        let events = self.events.clone();
+
+        let spawned = std::thread::Builder::new()
+            .name("nrc-gif".into())
+            .spawn(move || {
+                let started = Instant::now();
+
+                let source = request.source.clone();
+                let last = std::cell::Cell::new(Instant::now() - PROGRESS_EVERY);
+                let report = |done: u32, total: u32| {
+                    let finished = done >= total;
+                    if !finished && last.get().elapsed() < PROGRESS_EVERY {
+                        return;
+                    }
+                    last.set(Instant::now());
+                    let _ = events.send(CaptureToLauncher::ExportProgress(
+                        norisk_ipc::ExportProgress {
+                            source: source.clone(),
+                            done,
+                            total,
+                        },
+                    ));
+                };
+
+                match crate::gif::to_gif(&request.source, &request.destination, report) {
+                    Ok(result) => {
+                        log::info!(
+                            "Turned {} into a GIF in {} ms",
+                            request.source.display(),
+                            started.elapsed().as_millis()
+                        );
+                        let _ = events.send(CaptureToLauncher::GifExported(
+                            norisk_ipc::ExportedGif {
+                                path: result.path,
+                                source: request.source,
+                                width: result.width,
+                                height: result.height,
+                                frames: result.frames,
+                                duration_seconds: result.duration_seconds,
+                                size_bytes: result.size_bytes,
+                                truncated: result.truncated,
+                            },
+                        ));
+                    }
+                    Err(e) => {
+                        log::error!("GIF export failed: {e:#}");
+                        let _ = std::fs::remove_file(&request.destination);
+                        let _ = events.send(CaptureToLauncher::Error(CaptureError {
+                            code: ErrorCode::ClipWrite,
+                            message: format!("{e:#}"),
+                            recoverable: true,
+                        }));
+                    }
+                }
+            });
+
+        if let Err(e) = spawned {
+            self.emit_error(
+                ErrorCode::ClipWrite,
+                format!("could not start the GIF export: {e}"),
                 true,
             );
         }

@@ -17,6 +17,7 @@ pub enum LauncherToCapture {
     SaveClip(SaveClipRequest),
     TrimClip(TrimClipRequest),
     ExportVertical(ExportVerticalRequest),
+    ExportGif(ExportGifRequest),
     PrepareAudioPreview(AudioPreviewRequest),
     SetBufferEnabled { enabled: bool },
     Ping { seq: u64 },
@@ -216,6 +217,7 @@ pub enum CaptureToLauncher {
     ClipSaved(ClipManifest),
     ClipTrimmed(TrimmedClip),
     ClipExported(ExportedClip),
+    GifExported(ExportedGif),
     ExportProgress(ExportProgress),
     AudioPreviewReady(AudioPreview),
     Error(CaptureError),
@@ -708,6 +710,25 @@ pub struct ExportedClip {
     pub height: u32,
     pub duration_seconds: f64,
     pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExportGifRequest {
+    pub source: PathBuf,
+    pub destination: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportedGif {
+    pub path: PathBuf,
+    pub source: PathBuf,
+    pub width: u32,
+    pub height: u32,
+    pub frames: u32,
+    pub duration_seconds: f64,
+    pub size_bytes: u64,
+    pub truncated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
