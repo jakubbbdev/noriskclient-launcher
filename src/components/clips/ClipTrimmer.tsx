@@ -10,6 +10,7 @@ import { RangeSlider } from "../ui/RangeSlider";
 import { useThemeStore } from "../../store/useThemeStore";
 import {
   exportVertical,
+  samePath,
   type ClipAudioTrack,
   type ClipCorner,
   type ClipDetails,
@@ -2130,11 +2131,6 @@ function laneWindow(
 
 function formatOffset(seconds: number): string {
   return `${seconds > 0 ? "+" : "−"}${Number(Math.abs(seconds).toFixed(2))} s`;
-}
-
-function samePath(a: string, b: string): boolean {
-  const flatten = (path: string) => path.replace(/\\/g, "/").toLowerCase();
-  return flatten(a) === flatten(b);
 }
 
 function useFilmstrip(src: string, duration: number): string | null {

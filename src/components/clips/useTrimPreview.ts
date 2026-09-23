@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
-import { prepareClipPreview, type PreviewTrack, type TrackLevel } from "../../services/clip-service";
+import { prepareClipPreview, samePath, type PreviewTrack, type TrackLevel } from "../../services/clip-service";
 
 export type PreviewState = "unavailable" | "loading" | "live";
 
@@ -183,11 +183,6 @@ export function useTrimPreview({ path, video, levels, active }: Options): Previe
 
 function levelOf(levels: TrackLevel[], stream: number): number {
   return (levels.find((level) => level.stream === stream)?.volume ?? 100) / 100;
-}
-
-function samePath(a: string, b: string): boolean {
-  const flatten = (path: string) => path.replace(/\\/g, "/").toLowerCase();
-  return flatten(a) === flatten(b);
 }
 
 function stopQuietly(source: AudioBufferSourceNode) {

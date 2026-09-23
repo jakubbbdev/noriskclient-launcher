@@ -7,7 +7,7 @@ import { Button } from "../ui/buttons/Button";
 import { Modal } from "../ui/Modal";
 import { StatusMessage } from "../ui/StatusMessage";
 import { useThemeStore } from "../../store/useThemeStore";
-import { exportVertical, type ExportedClip, type ExportProgress } from "../../services/clip-service";
+import { exportVertical, samePath, type ExportedClip, type ExportProgress } from "../../services/clip-service";
 import { parseErrorMessage } from "../../utils/error-utils";
 import { cn } from "../../lib/utils";
 
@@ -178,9 +178,4 @@ export function VerticalExport({ src, path, onClose, onDone, t }: Props) {
       </div>
     </Modal>
   );
-}
-
-function samePath(a: string, b: string): boolean {
-  const flatten = (path: string) => path.replace(/\\/g, "/").toLowerCase();
-  return flatten(a) === flatten(b);
 }

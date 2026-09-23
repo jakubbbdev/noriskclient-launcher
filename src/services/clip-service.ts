@@ -260,3 +260,8 @@ export async function getCapturePermissions(request?: CapturePermission): Promis
 export async function openCapturePermissionSettings(permission: CapturePermission): Promise<void> {
   return invoke("capture_open_permission_settings", { permission });
 }
+
+export function samePath(a: string, b: string): boolean {
+  const flatten = (path: string) => path.replace(/\\/g, "/").toLowerCase();
+  return flatten(a) === flatten(b);
+}
