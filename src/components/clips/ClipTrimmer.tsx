@@ -144,12 +144,6 @@ interface BarDrag {
   endSeconds: number;
 }
 
-interface LaneDrag {
-  stream: number;
-  fromX: number;
-  offsetSeconds: number;
-}
-
 interface LaneTrim {
   stream: number;
   edge: "start" | "end";
@@ -223,7 +217,6 @@ export function ClipTrimmer({
   const [panel, setPanel] = useState<Panel>("tools");
   const [boxDrag, setBoxDrag] = useState<BoxDrag | null>(null);
   const [barDrag, setBarDrag] = useState<BarDrag | null>(null);
-  const [laneDrag, setLaneDrag] = useState<LaneDrag | null>(null);
   const [laneTrim, setLaneTrim] = useState<LaneTrim | null>(null);
   const [removed, setRemoved] = useState<Span[]>([]);
   const [splits, setSplits] = useState<number[]>([]);
@@ -248,7 +241,6 @@ export function ClipTrimmer({
   const [separate, setSeparate] = useState(false);
   const [picture, setPicture] = useState<LaneWindow>(NO_WINDOW);
   const [volumes, setVolumes] = useState<Record<number, number>>({});
-  const [offsets, setOffsets] = useState<Record<number, number>>({});
   const [windows, setWindows] = useState<Record<number, LaneWindow>>({});
 
   const doc = useMemo(
@@ -257,7 +249,6 @@ export function ClipTrimmer({
       start,
       end,
       picture,
-      offsets,
       windows,
       volumes,
       shape,
@@ -271,7 +262,6 @@ export function ClipTrimmer({
       blanked,
       end,
       muted,
-      offsets,
       overlays,
       picture,
       removed,
@@ -292,7 +282,6 @@ export function ClipTrimmer({
     setStart(saved.start);
     setEnd(saved.end);
     setPicture(saved.picture);
-    setOffsets(saved.offsets);
     setWindows(saved.windows);
     setVolumes(saved.volumes);
     setShape(saved.shape);
@@ -303,7 +292,6 @@ export function ClipTrimmer({
 
   useEffect(() => {
     setVolumes(Object.fromEntries(adjustable.map((track) => [track.stream, 100])));
-    setOffsets(Object.fromEntries(movable.map((track) => [track.stream, 0])));
     setWindows(Object.fromEntries(movable.map((track) => [track.stream, NO_WINDOW])));
     rebase();
   }, [adjustable, movable, rebase]);
@@ -317,17 +305,16 @@ export function ClipTrimmer({
         return {
           stream: track.stream,
           volume: volumes[track.stream] ?? 100,
-          offsetSeconds: offsets[track.stream] ?? 0,
+          offsetSeconds: 0,
           startSeconds: own.start,
           endSeconds: own.end,
         };
       }),
-    [end, movable, offsets, start, volumes, windows],
+    [end, movable, start, volumes, windows],
   );
   const rebalanced = levels.some(
     (level) =>
       level.volume !== 100 ||
-      level.offsetSeconds !== 0 ||
       level.startSeconds !== null ||
       level.endSeconds !== null,
   );
@@ -354,7 +341,6 @@ export function ClipTrimmer({
       setStart(shot.from);
       setEnd(shot.to);
       setPicture(NO_WINDOW);
-      setOffsets(Object.fromEntries(movable.map((track) => [track.stream, 0])));
       setWindows(Object.fromEntries(movable.map((track) => [track.stream, NO_WINDOW])));
     },
     [duration, end, movable, shot.from, shot.to, start],
@@ -547,30 +533,6 @@ export function ClipTrimmer({
       window.removeEventListener("pointerup", up);
     };
   }, [barDrag, duration, editOverlay]);
-
-  const shiftTrack = useCallback(
-    (stream: number, seconds: number) => {
-      setOffsets((current) => ({ ...current, [stream]: tidy(clamp(seconds, -duration, duration)) }));
-    },
-    [duration],
-  );
-
-  useEffect(() => {
-    if (!laneDrag) return;
-    const move = (event: PointerEvent) => {
-      const rect = scaleRef.current?.getBoundingClientRect();
-      if (!rect || rect.width === 0 || duration <= 0) return;
-      const by = ((event.clientX - laneDrag.fromX) / rect.width) * duration;
-      shiftTrack(laneDrag.stream, laneDrag.offsetSeconds + by);
-    };
-    const up = () => setLaneDrag(null);
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-  }, [duration, laneDrag, shiftTrack]);
 
   const trimTrack = useCallback(
     (stream: number, edge: "start" | "end", seconds: number) => {
@@ -1462,7 +1424,6 @@ export function ClipTrimmer({
                 name={trackName(track.label, t)}
                 movable={apart}
                 volume={track.adjustable ? (volumes[track.stream] ?? 100) : 100}
-                offset={apart ? (offsets[track.stream] ?? 0) : 0}
                 duration={duration}
                 tone={accentColor.light}
                 disabled={busy}
@@ -1475,13 +1436,10 @@ export function ClipTrimmer({
                 onChange={(volume) =>
                   setVolumes((current) => ({ ...current, [track.stream]: volume }))
                 }
-                onGrab={(event) => {
-                  setPick({ lane: track.stream, at: secondsAt(event.clientX) });
-                  setLaneDrag({
-                    stream: track.stream,
-                    fromX: event.clientX,
-                    offsetSeconds: offsets[track.stream] ?? 0,
-                  });
+                onPick={(clientX) => {
+                  scrubTo(clientX);
+                  setScrubbing(true);
+                  setPick({ lane: track.stream, at: secondsAt(clientX) });
                 }}
                 marks={laneMarks(track.stream, muted[track.stream] ?? [], (index) =>
                   setMuted((current) => ({
@@ -1489,8 +1447,6 @@ export function ClipTrimmer({
                     [track.stream]: (current[track.stream] ?? []).filter((_, at) => at !== index),
                   })),
                 )}
-                onNudge={(by) => shiftTrack(track.stream, (offsets[track.stream] ?? 0) + by)}
-                onReset={() => shiftTrack(track.stream, 0)}
                 onTrim={(edge) => setLaneTrim({ stream: track.stream, edge })}
                 onTrimNudge={(edge, by) =>
                   trimTrack(track.stream, edge, (edge === "start" ? own.from : own.to) + by)
@@ -1704,7 +1660,6 @@ function AudioLane({
   name,
   movable,
   volume,
-  offset,
   duration,
   tone,
   disabled,
@@ -1715,9 +1670,7 @@ function AudioLane({
   trimmed,
   trimming,
   onChange,
-  onGrab,
-  onNudge,
-  onReset,
+  onPick,
   onTrim,
   onTrimNudge,
   onTrimReset,
@@ -1728,7 +1681,6 @@ function AudioLane({
   name: string;
   movable: boolean;
   volume: number;
-  offset: number;
   duration: number;
   tone: string;
   disabled: boolean;
@@ -1739,9 +1691,7 @@ function AudioLane({
   trimmed: boolean;
   trimming: "start" | "end" | null;
   onChange: (volume: number) => void;
-  onGrab: (event: { clientX: number }) => void;
-  onNudge: (by: number) => void;
-  onReset: () => void;
+  onPick: (clientX: number) => void;
   onTrim: (edge: "start" | "end") => void;
   onTrimNudge: (edge: "start" | "end", by: number) => void;
   onTrimReset: () => void;
@@ -1749,9 +1699,8 @@ function AudioLane({
   t: Translate;
 }) {
   const muted = volume === 0;
-  const shiftable = movable && !disabled;
+  const trimmable = movable && !disabled;
   const span = duration > 0 ? duration : 1;
-  const shift = (offset / span) * 100;
   const at = (seconds: number) => (seconds / span) * 100;
 
   return (
@@ -1761,6 +1710,7 @@ function AudioLane({
       tint={tone}
       tone={tone}
       height="h-12"
+      onScrub={onPick}
       control={
         track.adjustable ? (
           <div className="flex shrink-0 items-center gap-1">
@@ -1785,35 +1735,13 @@ function AudioLane({
         ) : undefined
       }
     >
-      <div
-        className="absolute inset-0"
-        style={offset === 0 ? undefined : { transform: `translateX(${shift}%)` }}
-      >
+      <div className="absolute inset-0">
         <Waveform peaks={track.peaks} gain={volume / 100} muted={muted} />
       </div>
 
-      {shiftable && (
-        <button
-          type="button"
-          aria-label={t("clips.editor.audio.offset_shift", { name })}
-          onPointerDown={(event) => {
-            event.preventDefault();
-            onGrab(event);
-          }}
-          onDoubleClick={onReset}
-          onKeyDown={(event) => {
-            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-            event.preventDefault();
-            const step = event.shiftKey ? NUDGE * 10 : NUDGE;
-            onNudge(event.key === "ArrowLeft" ? -step : step);
-          }}
-          className="absolute inset-0 cursor-grab focus:outline-none focus-visible:ring-1 focus-visible:ring-white/60"
-        />
-      )}
-
       {marks}
 
-      {shiftable && (
+      {trimmable && (
         <div className="pointer-events-none absolute inset-0 z-10">
           <div
             className="absolute inset-y-0 bg-black/70"
@@ -1847,7 +1775,7 @@ function AudioLane({
         </div>
       )}
 
-      {shiftable && trimmed && (
+      {trimmable && trimmed && (
         <button
           type="button"
           title={t("clips.editor.audio.trim_reset")}
@@ -1857,19 +1785,6 @@ function AudioLane({
           className="absolute left-1/2 top-1 z-20 -translate-x-1/2 rounded border border-white/20 bg-black/70 px-1.5 py-0.5 font-minecraft text-[0.7rem] tabular-nums text-white transition-colors hover:border-white/60"
         >
           {`${(to - from).toFixed(1)} s`}
-        </button>
-      )}
-
-      {shiftable && offset !== 0 && (
-        <button
-          type="button"
-          title={t("clips.editor.audio.offset_reset")}
-          aria-label={t("clips.editor.audio.offset_reset")}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={onReset}
-          className="absolute right-1 top-1 z-20 rounded border border-white/20 bg-black/70 px-1.5 py-0.5 font-minecraft text-[0.7rem] tabular-nums text-white transition-colors hover:border-white/60"
-        >
-          {formatOffset(offset)}
         </button>
       )}
     </Lane>
@@ -2399,10 +2314,6 @@ function laneWindow(
   const from = kept.start === null ? null : clamp(kept.start, start, end - MIN_LENGTH);
   const to = kept.end === null ? null : clamp(kept.end, (from ?? start) + MIN_LENGTH, end);
   return { from: from ?? start, to: to ?? end, start: from, end: to };
-}
-
-function formatOffset(seconds: number): string {
-  return `${seconds > 0 ? "+" : "−"}${Number(Math.abs(seconds).toFixed(2))} s`;
 }
 
 function useFilmstrip(src: string, duration: number): string | null {
