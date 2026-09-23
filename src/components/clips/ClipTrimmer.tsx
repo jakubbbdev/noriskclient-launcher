@@ -582,7 +582,7 @@ export function ClipTrimmer({
   }, [canSplit, playhead]);
 
   const part = useMemo((): { lane: PartLane; span: Span } | null => {
-    if (!pick || splits.length === 0) return null;
+    if (!pick) return null;
     const lane: PartLane = separate ? pick.lane : "all";
     const range =
       typeof lane === "number" ? laneWindow(windows[lane], start, end) : { from: shot.from, to: shot.to };
@@ -1383,6 +1383,8 @@ export function ClipTrimmer({
             name={t("clips.editor.timeline.video")}
             tint={accentColor.value}
             height="h-14"
+            active={pick?.lane === "video"}
+            onPick={() => setPick({ lane: "video", at: playhead })}
             onScrub={(clientX) => {
               scrubTo(clientX);
               setScrubbing(true);
@@ -1436,6 +1438,8 @@ export function ClipTrimmer({
                 onChange={(volume) =>
                   setVolumes((current) => ({ ...current, [track.stream]: volume }))
                 }
+                active={pick?.lane === track.stream}
+                onSelect={() => setPick({ lane: track.stream, at: playhead })}
                 onPick={(clientX) => {
                   scrubTo(clientX);
                   setScrubbing(true);
@@ -1606,7 +1610,10 @@ function Lane({
           height,
           onScrub && "cursor-ew-resize",
         )}
-        style={{ color: tone }}
+        style={{
+          color: tone,
+          ...(active ? { borderColor: tint, boxShadow: `inset 0 0 0 1px ${tint}` } : {}),
+        }}
       >
         {children}
       </div>
@@ -1670,6 +1677,8 @@ function AudioLane({
   trimmed,
   trimming,
   onChange,
+  active,
+  onSelect,
   onPick,
   onTrim,
   onTrimNudge,
@@ -1691,6 +1700,8 @@ function AudioLane({
   trimmed: boolean;
   trimming: "start" | "end" | null;
   onChange: (volume: number) => void;
+  active: boolean;
+  onSelect: () => void;
   onPick: (clientX: number) => void;
   onTrim: (edge: "start" | "end") => void;
   onTrimNudge: (edge: "start" | "end", by: number) => void;
@@ -1710,6 +1721,8 @@ function AudioLane({
       tint={tone}
       tone={tone}
       height="h-12"
+      active={active}
+      onPick={onSelect}
       onScrub={onPick}
       control={
         track.adjustable ? (
