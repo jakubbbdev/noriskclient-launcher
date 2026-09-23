@@ -2438,6 +2438,8 @@
   "clips.editor.inspector.empty": "Pick an element on the picture or a lane below to change it.",
   "clips.editor.transport.to_start": "Jump to the start",
   "clips.editor.transport.pause": "Pause",
+  "clips.editor.transport.undo": "Undo",
+  "clips.editor.transport.redo": "Redo",
   "clips.editor.timeline.video": "Video",
   "clips.editor.overlay.window": "Shown from {{from}} to {{to}}",
   "clips.editor.tools.hint": "Pick a tool to drop it onto the picture, then drag it where it belongs.",

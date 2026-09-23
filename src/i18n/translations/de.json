@@ -2418,6 +2418,8 @@
   "clips.editor.inspector.empty": "Wähle ein Element im Bild oder eine Spur unten aus, um es zu ändern.",
   "clips.editor.transport.to_start": "Zum Anfang springen",
   "clips.editor.transport.pause": "Pause",
+  "clips.editor.transport.undo": "Rückgängig",
+  "clips.editor.transport.redo": "Wiederholen",
   "clips.editor.timeline.video": "Bild",
   "clips.editor.overlay.window": "Sichtbar von {{from}} bis {{to}}",
   "clips.editor.tools.hint": "Wähle ein Werkzeug, um es ins Bild zu setzen, und zieh es dann an die richtige Stelle.",

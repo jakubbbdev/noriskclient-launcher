@@ -2701,6 +2701,8 @@
   "clips.editor.inspector.empty": "Выбери элемент на картинке или дорожку ниже, чтобы изменить его.",
   "clips.editor.transport.to_start": "К началу",
   "clips.editor.transport.pause": "Пауза",
+  "clips.editor.transport.undo": "Отменить",
+  "clips.editor.transport.redo": "Повторить",
   "clips.editor.timeline.video": "Видео",
   "clips.editor.overlay.window": "Видно с {{from}} до {{to}}",
   "clips.editor.tools.hint": "Выбери инструмент, чтобы положить его на картинку, и перетащи туда, где он нужен.",

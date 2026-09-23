@@ -2689,6 +2689,8 @@
   "clips.editor.inspector.empty": "Değiştirmek için görüntüdeki bir ögeyi ya da aşağıdaki bir şeridi seç.",
   "clips.editor.transport.to_start": "Başa dön",
   "clips.editor.transport.pause": "Duraklat",
+  "clips.editor.transport.undo": "Geri al",
+  "clips.editor.transport.redo": "Yinele",
   "clips.editor.timeline.video": "Görüntü",
   "clips.editor.overlay.window": "{{from}} ile {{to}} arasında görünür",
   "clips.editor.tools.hint": "Bir aracı görüntüye bırakmak için seç, sonra olması gereken yere sürükle.",

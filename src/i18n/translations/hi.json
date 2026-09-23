@@ -2704,6 +2704,8 @@
   "clips.editor.inspector.empty": "बदलने के लिए तस्वीर पर कोई तत्व या नीचे कोई ट्रैक चुनें।",
   "clips.editor.transport.to_start": "शुरुआत पर जाएँ",
   "clips.editor.transport.pause": "रोकें",
+  "clips.editor.transport.undo": "पूर्ववत करें",
+  "clips.editor.transport.redo": "फिर से करें",
   "clips.editor.timeline.video": "वीडियो",
   "clips.editor.overlay.window": "{{from}} से {{to}} तक दिखता है",
   "clips.editor.tools.hint": "तस्वीर पर रखने के लिए कोई उपकरण चुनें, फिर उसे सही जगह खींचें।",

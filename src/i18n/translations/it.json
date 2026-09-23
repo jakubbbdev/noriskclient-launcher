@@ -2689,6 +2689,8 @@
   "clips.editor.inspector.empty": "Scegli un elemento sull'immagine o una traccia qui sotto per modificarlo.",
   "clips.editor.transport.to_start": "Vai all'inizio",
   "clips.editor.transport.pause": "Pausa",
+  "clips.editor.transport.undo": "Annulla",
+  "clips.editor.transport.redo": "Ripeti",
   "clips.editor.timeline.video": "Video",
   "clips.editor.overlay.window": "Visibile da {{from}} a {{to}}",
   "clips.editor.tools.hint": "Scegli uno strumento per posarlo sull'immagine, poi trascinalo dove serve.",

@@ -24,6 +24,7 @@ import { ClipIconButton } from "./ClipIconButton";
 import { cn } from "../../lib/utils";
 import { parseErrorMessage } from "../../utils/error-utils";
 import { useTrimPreview } from "./useTrimPreview";
+import { useEditHistory } from "./useEditHistory";
 import { ColorPickerModal } from "../modals/ColorPickerModal";
 import { useGlobalModal } from "../../hooks/useGlobalModal";
 
@@ -240,11 +241,31 @@ export function ClipTrimmer({
   const [volumes, setVolumes] = useState<Record<number, number>>({});
   const [offsets, setOffsets] = useState<Record<number, number>>({});
   const [windows, setWindows] = useState<Record<number, LaneWindow>>({});
+
+  const doc = useMemo(
+    () => ({ overlays, start, end, picture, offsets, windows, volumes, shape, separate }),
+    [end, offsets, overlays, picture, separate, shape, start, volumes, windows],
+  );
+  const restore = useCallback((saved: typeof doc) => {
+    setOverlays(saved.overlays);
+    setStart(saved.start);
+    setEnd(saved.end);
+    setPicture(saved.picture);
+    setOffsets(saved.offsets);
+    setWindows(saved.windows);
+    setVolumes(saved.volumes);
+    setShape(saved.shape);
+    setSeparate(saved.separate);
+  }, []);
+  const history = useEditHistory(doc, restore, !busy);
+  const { rebase } = history;
+
   useEffect(() => {
     setVolumes(Object.fromEntries(adjustable.map((track) => [track.stream, 100])));
     setOffsets(Object.fromEntries(movable.map((track) => [track.stream, 0])));
     setWindows(Object.fromEntries(movable.map((track) => [track.stream, NO_WINDOW])));
-  }, [adjustable, movable]);
+    rebase();
+  }, [adjustable, movable, rebase]);
 
   const shot = laneWindow(picture, start, end);
 
@@ -299,7 +320,8 @@ export function ClipTrimmer({
 
   useEffect(() => {
     if (duration > 0) setEnd((current) => (current === 0 ? duration : Math.min(current, duration)));
-  }, [duration]);
+    rebase();
+  }, [duration, rebase]);
 
   const filmstrip = useFilmstrip(src, duration);
 
@@ -1114,6 +1136,20 @@ export function ClipTrimmer({
           label={playing ? t("clips.editor.transport.pause") : t("clips.trim.preview")}
           tooltipPosition="top"
           onClick={preview}
+        />
+        <ClipIconButton
+          icon="solar:undo-left-bold"
+          label={t("clips.editor.transport.undo")}
+          tooltipPosition="top"
+          onClick={history.undo}
+          disabled={!history.canUndo}
+        />
+        <ClipIconButton
+          icon="solar:undo-right-bold"
+          label={t("clips.editor.transport.redo")}
+          tooltipPosition="top"
+          onClick={history.redo}
+          disabled={!history.canRedo}
         />
 
         <span className="ml-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-1 font-minecraft text-sm tabular-nums text-white/90">

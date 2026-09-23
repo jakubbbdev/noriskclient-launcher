@@ -2699,6 +2699,8 @@
   "clips.editor.inspector.empty": "Wybierz element na obrazie albo ścieżkę poniżej, aby go zmienić.",
   "clips.editor.transport.to_start": "Skocz na początek",
   "clips.editor.transport.pause": "Pauza",
+  "clips.editor.transport.undo": "Cofnij",
+  "clips.editor.transport.redo": "Ponów",
   "clips.editor.timeline.video": "Obraz",
   "clips.editor.overlay.window": "Widoczne od {{from}} do {{to}}",
   "clips.editor.tools.hint": "Wybierz narzędzie, aby umieścić je na obrazie, a potem przeciągnij je na miejsce.",
