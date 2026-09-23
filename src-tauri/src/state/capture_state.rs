@@ -574,6 +574,17 @@ impl CaptureSupervisor {
                         info.protocol_version,
                         norisk_ipc::PROTOCOL_VERSION
                     );
+                    Box::pin(self.absorb(CaptureToLauncher::Error(norisk_ipc::CaptureError {
+                        code: norisk_ipc::ErrorCode::Protocol,
+                        message: format!(
+                            "The capture engine speaks protocol {} but the launcher speaks {}. \
+                             Restart the launcher so both halves are the same version.",
+                            info.protocol_version,
+                            norisk_ipc::PROTOCOL_VERSION
+                        ),
+                        recoverable: true,
+                    })))
+                    .await;
                 }
                 log::info!(
                     "Capture engine {} ready on {} with {:?}",
