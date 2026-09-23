@@ -1197,13 +1197,7 @@ impl Engine {
                     ));
                 };
 
-                match crate::vertical::to_vertical(
-                    &request.source,
-                    &request.destination,
-                    request.shape,
-                    &request.overlays,
-                    report,
-                ) {
+                match crate::vertical::to_vertical(&request, report) {
                     Ok(result) => {
                         log::info!(
                             "Exported {} as {}x{} in {} ms",

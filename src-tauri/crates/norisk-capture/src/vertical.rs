@@ -1,5 +1,5 @@
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
 use ffmpeg_next::ffi as ff;
@@ -54,15 +54,26 @@ fn crop_ratio(shape: norisk_ipc::ClipShape, width: u32, height: u32) -> Ratio {
     shape.ratio().unwrap_or((width as i64, height as i64))
 }
 
+fn to_decode(packets: &[Packet], start: i64, end: i64) -> &[Packet] {
+    let first = packets
+        .iter()
+        .rposition(|p| p.keyframe && p.pts <= start)
+        .unwrap_or(0);
+    let rest = &packets[first..];
+    &rest[..rest.iter().take_while(|p| p.dts <= end).count()]
+}
+
+fn place(pts: i64, start: i64, end: i64, last: Option<i64>) -> Option<i64> {
+    (pts >= start && pts <= end && last.is_none_or(|last| pts > last)).then_some(pts)
+}
+
 pub fn to_vertical(
-    source: &Path,
-    destination: &Path,
-    shape: norisk_ipc::ClipShape,
-    overlays: &[norisk_ipc::ClipOverlay],
+    request: &norisk_ipc::ExportVerticalRequest,
     progress: impl Fn(u32, u32),
 ) -> Result<VerticalResult> {
-    let clip = crate::trim::read(source)?;
-    let ratio = crop_ratio(shape, clip.track.width, clip.track.height);
+    let destination = request.destination.as_path();
+    let clip = crate::trim::read(&request.source)?;
+    let ratio = crop_ratio(request.shape, clip.track.width, clip.track.height);
 
     let (left, right, top, bottom) = centre_crop(clip.track.width, clip.track.height, ratio);
     let width = clip.track.width.saturating_sub(left + right);
@@ -91,48 +102,91 @@ pub fn to_vertical(
         clip.track.height,
     );
 
+    let duration = clip.duration_seconds();
+    let (start_seconds, end_seconds) = crate::trim::usable_range(
+        request.start_seconds.unwrap_or(0.0),
+        request.end_seconds.unwrap_or(duration),
+        duration,
+    )?;
+    let want_start = clip.first_pts + (start_seconds * TIME_BASE_DEN as f64) as i64;
+    let want_end = clip.first_pts + (end_seconds * TIME_BASE_DEN as f64) as i64;
+    let (picture_start, picture_end) = crate::trim::picture_window(
+        request.video_start_seconds,
+        request.video_end_seconds,
+        clip.first_pts,
+        want_start,
+        want_end,
+    );
+
+    let feed = to_decode(&clip.video, picture_start, picture_end);
+    let crop = (left, right, top, bottom);
     let mut decoder = Decoder::open(&clip.track)?;
     let mut encoder = Encoder::open(width, height, clip.track.fps)?;
 
-    let total = clip.video.len() as u32;
-    let mut packets: Vec<Packet> = Vec::with_capacity(clip.video.len());
-    let origin = clip.video.first().map(|p| p.pts).unwrap_or(0);
+    let total = feed.len() as u32;
+    let mut packets: Vec<Packet> = Vec::with_capacity(feed.len());
+    let mut last = None;
+    let mut take = |frame: Frame| -> Result<()> {
+        let pts = unsafe {
+            if (*frame.0).pts == ff::AV_NOPTS_VALUE {
+                (*frame.0).best_effort_timestamp
+            } else {
+                (*frame.0).pts
+            }
+        };
+        let Some(pts) = place(pts, picture_start, picture_end, last) else {
+            return Ok(());
+        };
+        last = Some(pts);
+        unsafe { (*frame.0).pts = pts };
+        paint(&frame, clip.first_pts, &request.overlays)?;
+        packets.extend(encoder.push(frame, crop)?);
+        Ok(())
+    };
 
-    for (index, packet) in clip.video.iter().enumerate() {
+    for (index, packet) in feed.iter().enumerate() {
         for frame in decoder.push(packet)? {
-            paint(&frame, origin, overlays)?;
-            packets.extend(encoder.push(frame, (left, right, top, bottom))?);
+            take(frame)?;
         }
         progress(index as u32 + 1, total);
     }
     for frame in decoder.finish()? {
-        paint(&frame, origin, overlays)?;
-        packets.extend(encoder.push(frame, (left, right, top, bottom))?);
+        take(frame)?;
     }
     packets.extend(encoder.finish()?);
     progress(total, total);
 
     if packets.is_empty() {
-        bail!("the clip produced no frames to write");
+        bail!("no frames fall inside {start_seconds:.1}s to {end_seconds:.1}s");
     }
 
-    let audio = crate::trim::as_recorded_mix(&clip);
+    let audio = crate::trim::windowed_audio(
+        &clip.audio,
+        &request.levels,
+        clip.first_pts,
+        want_start,
+        want_end,
+    );
+    let audio = crate::trim::build_audio(&audio, &request.levels)?;
+    let audio_packets = || audio.iter().flat_map(|track| track.packets.iter());
 
-    let bytes = packets.iter().map(|p| p.len() as u64).sum::<u64>()
-        + audio
-            .iter()
-            .flat_map(|track| track.packets.iter())
-            .map(|p| p.len() as u64)
-            .sum::<u64>();
-
-    let start_pts = packets.first().map(|p| p.pts).unwrap_or(0);
-    let end_pts = packets.last().map(|p| p.pts).unwrap_or(start_pts);
+    let bytes = packets
+        .iter()
+        .chain(audio_packets())
+        .map(|p| p.len() as u64)
+        .sum::<u64>();
+    let end_pts = packets
+        .iter()
+        .chain(audio_packets())
+        .map(|p| p.pts)
+        .max()
+        .unwrap_or(want_end);
 
     let cut = Clip {
-        start_pts,
+        start_pts: want_start,
         end_pts,
         bytes,
-        playback_start_pts: start_pts,
+        playback_start_pts: want_start,
         packets,
     };
 
@@ -368,8 +422,6 @@ impl Drop for Frame {
 struct Encoder {
     context: *mut ff::AVCodecContext,
     packet: *mut ff::AVPacket,
-    next_pts: i64,
-    fps: i64,
 }
 
 impl Encoder {
@@ -395,8 +447,6 @@ impl Encoder {
             let mut guard = Self {
                 context,
                 packet: std::ptr::null_mut(),
-                next_pts: 0,
-                fps,
             };
 
             (*context).width = width as i32;
@@ -463,8 +513,7 @@ impl Encoder {
                 bail!("cropping the frame failed: {}", av_error(rc));
             }
 
-            (*frame.0).pts = self.next_pts;
-            self.next_pts += TIME_BASE_DEN as i64 / self.fps;
+            (*frame.0).pict_type = ff::AVPictureType::AV_PICTURE_TYPE_NONE;
 
             let rc = ff::avcodec_send_frame(self.context, frame.0);
             if rc < 0 {
@@ -661,6 +710,168 @@ mod tests {
         let (w, h) = cropped(1000, 1000);
         assert!(w < h, "a square has to become taller than it is wide: {w}x{h}");
     }
+
+    const STEP: i64 = TIME_BASE_DEN as i64 / 60;
+
+    fn packet(pts: i64, dts: i64, keyframe: bool) -> Packet {
+        Packet {
+            data: vec![0; 4].into(),
+            pts,
+            dts,
+            keyframe,
+        }
+    }
+
+    fn kept(times: &[i64], start: i64, end: i64) -> Vec<i64> {
+        let mut last = None;
+        times
+            .iter()
+            .filter_map(|&pts| {
+                let placed = place(pts, start, end, last);
+                last = placed.or(last);
+                placed
+            })
+            .collect()
+    }
+
+    fn uneven() -> Vec<i64> {
+        let gaps = [1_200, 1_700, 1_400, 2_300, 1_500, 900, 1_600, 1_800];
+        (0..600)
+            .scan(0i64, |at, i| {
+                let now = *at;
+                *at += gaps[i % gaps.len()];
+                Some(now)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn kept_frames_keep_their_own_times_inside_the_window() {
+        let times = uneven();
+        let (start, end) = (100_000, 500_000);
+
+        let out = kept(&times, start, end);
+        let inside: Vec<i64> = times
+            .iter()
+            .copied()
+            .filter(|pts| (start..=end).contains(pts))
+            .collect();
+
+        assert_eq!(out, inside, "a frame was moved, lost or invented");
+        assert!(out.iter().all(|pts| (start..=end).contains(pts)));
+        assert!(out.windows(2).all(|pair| pair[0] < pair[1]));
+    }
+
+    #[test]
+    fn uneven_frames_span_what_the_source_spans_not_count_times_interval() {
+        let times = uneven();
+        let (start, end) = (0, *times.last().unwrap());
+
+        let out = kept(&times, start, end);
+        let span = out.last().unwrap() - out.first().unwrap();
+        let counted = (out.len() as i64 - 1) * STEP;
+
+        assert_eq!(span, times.last().unwrap() - times.first().unwrap());
+        assert_ne!(
+            span, counted,
+            "the test spacing is too even to tell real times from a counter"
+        );
+    }
+
+    #[test]
+    fn a_frame_that_repeats_or_goes_back_is_dropped_rather_than_sent_twice() {
+        let times = [0, STEP, STEP, STEP - 100, 2 * STEP, 3 * STEP];
+
+        assert_eq!(kept(&times, 0, 10 * STEP), vec![0, STEP, 2 * STEP, 3 * STEP]);
+    }
+
+    #[test]
+    fn a_window_that_makes_no_sense_keeps_nothing_and_does_not_panic() {
+        let times = uneven();
+
+        assert!(kept(&times, 500_000, 100_000).is_empty());
+        assert!(kept(&times, i64::MAX, i64::MAX).is_empty());
+        assert!(kept(&times, i64::MIN, i64::MIN).is_empty());
+        assert!(kept(&[], 0, 10).is_empty());
+        assert_eq!(kept(&times, i64::MIN, i64::MAX), times);
+        assert!(kept(&[i64::MIN, i64::MAX], 0, 10).is_empty());
+
+        assert!(to_decode(&[], 0, 10).is_empty());
+        let packets: Vec<Packet> = times.iter().map(|&t| packet(t, t, t == 0)).collect();
+        assert!(to_decode(&packets, 500_000, 100_000)
+            .iter()
+            .all(|p| p.dts <= 100_000));
+        assert!(to_decode(&packets, i64::MIN, i64::MIN).is_empty());
+        assert_eq!(to_decode(&packets, i64::MAX, i64::MAX).len(), packets.len());
+    }
+
+    #[test]
+    fn a_nonsense_picture_window_renders_the_whole_cut() {
+        let times = uneven();
+        let (want_start, want_end) = (100_000, 500_000);
+
+        let (start, end) = crate::trim::picture_window(
+            Some(f64::NAN),
+            Some(f64::INFINITY),
+            0,
+            want_start,
+            want_end,
+        );
+
+        assert_eq!(kept(&times, start, end), kept(&times, want_start, want_end));
+    }
+
+    #[test]
+    fn decoding_starts_at_the_keyframe_before_the_window_and_stops_after_it() {
+        let packets: Vec<Packet> = (0..600)
+            .map(|i| packet(i * STEP, i * STEP, i % 120 == 0))
+            .collect();
+        let second = TIME_BASE_DEN as i64;
+        let (start, end) = (5 * second + STEP / 2, 7 * second);
+
+        let fed = to_decode(&packets, start, end);
+
+        assert!(fed[0].keyframe);
+        assert_eq!(fed[0].pts, 4 * second);
+        assert_eq!(fed.last().unwrap().pts, end);
+        assert!(packets
+            .iter()
+            .filter(|p| (start..=end).contains(&p.pts))
+            .all(|p| fed.contains(p)));
+    }
+
+    #[test]
+    fn a_window_before_the_first_keyframe_decodes_from_the_first_packet() {
+        let packets: Vec<Packet> = (0..60)
+            .map(|i| packet(i * STEP, i * STEP, i == 10))
+            .collect();
+
+        let fed = to_decode(&packets, 3 * STEP, 20 * STEP);
+
+        assert_eq!(fed[0].pts, 0);
+        assert_eq!(fed.len(), 21);
+    }
+
+    #[test]
+    fn reordered_frames_up_to_the_end_are_all_fed_to_the_decoder() {
+        let order = [0, 3, 1, 2, 6, 4, 5, 9, 7, 8];
+        let packets: Vec<Packet> = order
+            .iter()
+            .enumerate()
+            .map(|(i, &shown)| packet(shown * STEP, (i as i64 - 1) * STEP, i == 0))
+            .collect();
+        let end = 4 * STEP;
+
+        let fed = to_decode(&packets, 0, end);
+
+        for shown in 0..=4 {
+            assert!(
+                fed.iter().any(|p| p.pts == shown * STEP),
+                "frame {shown} is shown before the end but was never decoded"
+            );
+        }
+        assert!(fed.iter().all(|p| p.dts <= end));
+    }
 }
 
 #[cfg(test)]
@@ -676,7 +887,13 @@ mod probe {
         let _ = std::fs::remove_file(&destination);
 
         let started = std::time::Instant::now();
-        match super::to_vertical(std::path::Path::new(&source), &destination, norisk_ipc::ClipShape::Vertical, &[], |_, _| {}) {
+        let request = norisk_ipc::ExportVerticalRequest {
+            source: source.into(),
+            destination: destination.clone(),
+            shape: norisk_ipc::ClipShape::Vertical,
+            ..Default::default()
+        };
+        match super::to_vertical(&request, |_, _| {}) {
             Ok(result) => println!(
                 "OK  {}x{}  {:.1}s  {:.1} MB  in {} ms  -> {}",
                 result.width,
@@ -737,14 +954,14 @@ mod render_tests {
             end_seconds: 999.0,
         }];
 
-        let result = super::to_vertical(
-            &source,
-            &destination,
-            norisk_ipc::ClipShape::Square,
-            &overlays,
-            |_, _| {},
-        )
-        .unwrap();
+        let request = norisk_ipc::ExportVerticalRequest {
+            source,
+            destination: destination.clone(),
+            shape: norisk_ipc::ClipShape::Square,
+            overlays,
+            ..Default::default()
+        };
+        let result = super::to_vertical(&request, |_, _| {}).unwrap();
 
         assert_eq!(result.width, result.height, "a square export was not square");
         println!(
@@ -755,5 +972,57 @@ mod render_tests {
             result.size_bytes as f64 / 1e6,
             destination.display(),
         );
+    }
+
+    #[test]
+    #[ignore = "needs a real clip in NRC_TEST_CLIP"]
+    fn a_cut_render_runs_exactly_as_long_as_the_cut() {
+        use crate::encoder::video::TIME_BASE_DEN;
+
+        let source = std::path::PathBuf::from(std::env::var("NRC_TEST_CLIP").unwrap());
+        let destination = std::env::temp_dir().join("nrc-cut-render-test.mp4");
+        let _ = std::fs::remove_file(&destination);
+
+        let original = crate::trim::read(&source).unwrap();
+        let (start, end) = (1.0, (original.duration_seconds() - 1.0).min(11.0));
+        assert!(end - start >= 1.0, "the test clip is too short to cut");
+
+        let request = norisk_ipc::ExportVerticalRequest {
+            source,
+            destination: destination.clone(),
+            shape: norisk_ipc::ClipShape::Original,
+            start_seconds: Some(start),
+            end_seconds: Some(end),
+            ..Default::default()
+        };
+        super::to_vertical(&request, |_, _| {}).unwrap();
+
+        let written = crate::trim::read(&destination).unwrap();
+        let first = written.video.iter().map(|p| p.pts).min().unwrap();
+        let last = written.video.iter().map(|p| p.pts).max().unwrap();
+        let frame = TIME_BASE_DEN as i64 / original.track.fps.max(1) as i64;
+        let seconds = |ticks: i64| ticks as f64 / TIME_BASE_DEN as f64;
+
+        let video = seconds(last - first + frame);
+        let wanted = end - start;
+        println!(
+            "{} frames, video {video:.3}s for a {wanted:.3}s cut -> {}",
+            written.video.len(),
+            destination.display(),
+        );
+        assert!(
+            (video - wanted).abs() <= seconds(frame),
+            "the picture runs {video:.3}s, not the {wanted:.3}s that was cut"
+        );
+
+        let audio_first = written
+            .audio
+            .first()
+            .and_then(|track| track.packets.iter().map(|p| p.pts).min());
+        if let Some(audio_first) = audio_first {
+            let apart = seconds((audio_first - first).abs());
+            println!("sound starts {apart:.3}s away from the picture");
+            assert!(apart < 0.1, "sound and picture start {apart:.3}s apart");
+        }
     }
 }

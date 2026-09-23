@@ -93,7 +93,7 @@ fn keyframe_at_or_before(packets: &[Packet], pts: i64, fallback: i64) -> i64 {
         .unwrap_or(fallback)
 }
 
-fn picture_window(
+pub(crate) fn picture_window(
     start_seconds: Option<f64>,
     end_seconds: Option<f64>,
     origin: i64,
@@ -133,7 +133,7 @@ fn furthest_pts(video: &[Packet], audio: &[AudioTrack], fallback: i64) -> i64 {
     last_video.max(last_audio).unwrap_or(fallback)
 }
 
-fn windowed_audio(
+pub(crate) fn windowed_audio(
     sources: &[AudioSource],
     levels: &[norisk_ipc::TrackLevel],
     origin: i64,
@@ -176,7 +176,7 @@ fn windowed_audio(
 }
 
 #[cfg(windows)]
-fn build_audio(
+pub(crate) fn build_audio(
     audio: &[AudioSource],
     levels: &[norisk_ipc::TrackLevel],
 ) -> Result<Vec<AudioTrack>> {
@@ -204,18 +204,11 @@ fn build_audio(
 }
 
 #[cfg(not(windows))]
-fn build_audio(
+pub(crate) fn build_audio(
     audio: &[AudioSource],
     _levels: &[norisk_ipc::TrackLevel],
 ) -> Result<Vec<AudioTrack>> {
     Ok(audio.first().map(as_recorded).unwrap_or_default())
-}
-
-pub(crate) fn as_recorded_mix(clip: &SourceClip) -> Vec<AudioTrack> {
-    match clip.audio.first() {
-        Some(mix) => as_recorded(mix),
-        None => Vec::new(),
-    }
 }
 
 fn as_recorded(source: &AudioSource) -> Vec<AudioTrack> {
@@ -325,7 +318,7 @@ fn remix(stems: &[&AudioSource], levels: &[norisk_ipc::TrackLevel]) -> Result<Au
 
 const MIN_TRIM_SECONDS: f64 = 0.5;
 
-fn usable_range(start: f64, end: f64, duration: f64) -> Result<(f64, f64)> {
+pub(crate) fn usable_range(start: f64, end: f64, duration: f64) -> Result<(f64, f64)> {
     if !start.is_finite() || !end.is_finite() {
         bail!("the trim range has to be two real numbers");
     }
@@ -364,7 +357,7 @@ pub(crate) struct AudioFormat {
 }
 
 impl SourceClip {
-    fn duration_seconds(&self) -> f64 {
+    pub(crate) fn duration_seconds(&self) -> f64 {
         match self.video.last() {
             Some(last) => ((last.pts - self.first_pts).max(0)) as f64 / TIME_BASE_DEN as f64,
             None => 0.0,
