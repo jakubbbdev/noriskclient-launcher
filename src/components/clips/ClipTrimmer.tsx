@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "@iconify/react";
+import { toast } from "react-hot-toast";
 
 import { Button } from "../ui/buttons/Button";
 import { Input } from "../ui/Input";
@@ -158,11 +159,14 @@ interface LaneWindow {
 
 const NO_WINDOW: LaneWindow = { start: null, end: null };
 
-type ExportStage =
-  | { kind: "idle" }
-  | { kind: "running"; done: number; total: number }
-  | { kind: "done" }
-  | { kind: "failed"; why: string };
+interface RenderProgress {
+  done: number;
+  total: number;
+}
+
+interface CaptureError {
+  code: string;
+}
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -189,7 +193,7 @@ export function ClipTrimmer({
   path,
   name,
   duration,
-  busy,
+  busy: saving,
   details,
   onCancel,
   onSave,
@@ -216,7 +220,13 @@ export function ClipTrimmer({
   const [barDrag, setBarDrag] = useState<BarDrag | null>(null);
   const [laneDrag, setLaneDrag] = useState<LaneDrag | null>(null);
   const [laneTrim, setLaneTrim] = useState<LaneTrim | null>(null);
-  const [stage, setStage] = useState<ExportStage>({ kind: "idle" });
+  const [rendering, setRendering] = useState<RenderProgress | null>(null);
+  const renderingRef = useRef(false);
+  const leave = useRef(onCancel);
+  useEffect(() => {
+    leave.current = onCancel;
+  }, [onCancel]);
+  const busy = saving || rendering !== null;
 
   const lanes = useMemo(() => details?.audioTracks ?? [], [details]);
   const adjustable = useMemo(() => lanes.filter((track) => track.adjustable), [lanes]);
@@ -536,12 +546,21 @@ export function ClipTrimmer({
       const { listen } = await import("@tauri-apps/api/event");
       const stops = await Promise.all([
         listen<ExportProgress>("clip_export_progress", (event) => {
-          if (!samePath(event.payload.source, path)) return;
-          setStage({ kind: "running", done: event.payload.done, total: event.payload.total });
+          if (!renderingRef.current || !samePath(event.payload.source, path)) return;
+          setRendering({ done: event.payload.done, total: event.payload.total });
         }),
         listen<ExportedClip>("clip_exported", (event) => {
-          if (!samePath(event.payload.source, path)) return;
-          setStage({ kind: "done" });
+          if (!renderingRef.current || !samePath(event.payload.source, path)) return;
+          renderingRef.current = false;
+          setRendering(null);
+          toast.success(t("clips.trim.saved"));
+          leave.current();
+        }),
+        listen<CaptureError>("clip_error", (event) => {
+          if (!renderingRef.current || event.payload.code !== "clip_write") return;
+          renderingRef.current = false;
+          setRendering(null);
+          toast.error(t("clips.trim.failed"));
         }),
       ]);
       if (!alive) {
@@ -555,17 +574,30 @@ export function ClipTrimmer({
       alive = false;
       stop?.();
     };
-  }, [path]);
+  }, [path, t]);
 
-  const runExport = useCallback(async () => {
-    setStage({ kind: "running", done: 0, total: 0 });
-    try {
-      await exportVertical(path, shape, overlays);
-    } catch (e) {
-      console.error("Could not export the clip", e);
-      setStage({ kind: "failed", why: parseErrorMessage(e) });
+  const save = useCallback(async () => {
+    if (overlays.length === 0 && shape === "original") {
+      onSave(start, end, levels, shot.start, shot.end);
+      return;
     }
-  }, [overlays, path, shape]);
+    renderingRef.current = true;
+    setRendering({ done: 0, total: 0 });
+    try {
+      await exportVertical(path, shape, overlays, {
+        startSeconds: start,
+        endSeconds: end,
+        levels,
+        videoStartSeconds: shot.start,
+        videoEndSeconds: shot.end,
+      });
+    } catch (e) {
+      console.error("Could not render the clip", e);
+      renderingRef.current = false;
+      setRendering(null);
+      toast.error(parseErrorMessage(e));
+    }
+  }, [end, levels, onSave, overlays, path, shape, shot.end, shot.start, start]);
 
   const guide = useMemo(() => {
     const target = SHAPES.find((entry) => entry.choice === shape)?.ratio;
@@ -578,8 +610,8 @@ export function ClipTrimmer({
   const picked = chosen === null ? null : (overlays[chosen] ?? null);
 
   const exportPercent =
-    stage.kind === "running" && stage.total > 0
-      ? Math.round((stage.done / stage.total) * 100)
+    rendering && rendering.total > 0
+      ? Math.round((rendering.done / rendering.total) * 100)
       : null;
 
   const preview = useCallback(() => {
@@ -702,9 +734,9 @@ export function ClipTrimmer({
             {t("clips.editor.exit")}
           </Button>
           <Button
-            variant="secondary"
+            variant="default"
             size="sm"
-            onClick={() => onSave(start, end, levels, shot.start, shot.end)}
+            onClick={() => void save()}
             disabled={busy || kept < MIN_LENGTH}
             icon={
               <Icon
@@ -715,25 +747,9 @@ export function ClipTrimmer({
           >
             {t("clips.trim.save")}
           </Button>
-          <Button
-            variant="default"
-            size="sm"
-            onClick={() => void runExport()}
-            disabled={busy || stage.kind === "running"}
-            icon={
-              <Icon
-                icon={stage.kind === "running" ? "svg-spinners:ring-resize" : "solar:smartphone-bold"}
-                className="w-4 h-4"
-              />
-            }
-          >
-            {stage.kind === "failed"
-              ? t("clips.editor.export.retry")
-              : t("clips.editor.export.action")}
-          </Button>
         </div>
 
-        {stage.kind === "running" && (
+        {rendering && (
           <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-white/10">
             <span
               className={cn(

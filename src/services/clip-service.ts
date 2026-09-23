@@ -141,8 +141,14 @@ export async function exportVertical(
   path: string,
   shape?: ClipShape,
   overlays?: ClipOverlay[],
+  cut?: ClipCut,
 ): Promise<string> {
-  return invoke<string>("clip_export_vertical", { path, shape, overlays });
+  return invoke<string>("clip_export_vertical", {
+    path,
+    shape,
+    overlays,
+    ...(cut ? cutArgs(cut) : {}),
+  });
 }
 
 export interface ExportedGif {
@@ -209,6 +215,30 @@ export interface TrackLevel {
   endSeconds: number | null;
 }
 
+export interface ClipCut {
+  startSeconds: number;
+  endSeconds: number;
+  levels?: TrackLevel[];
+  videoStartSeconds?: number | null;
+  videoEndSeconds?: number | null;
+}
+
+function cutArgs(cut: ClipCut) {
+  return {
+    startSeconds: cut.startSeconds,
+    endSeconds: cut.endSeconds,
+    videoStartSeconds: cut.videoStartSeconds ?? null,
+    videoEndSeconds: cut.videoEndSeconds ?? null,
+    levels: cut.levels?.map((level) => ({
+      stream: level.stream,
+      volume: level.volume,
+      offset_seconds: level.offsetSeconds,
+      start_seconds: level.startSeconds,
+      end_seconds: level.endSeconds,
+    })),
+  };
+}
+
 export async function trimClip(
   path: string,
   startSeconds: number,
@@ -219,17 +249,7 @@ export async function trimClip(
 ): Promise<string> {
   return invoke<string>("clip_trim", {
     path,
-    startSeconds,
-    endSeconds,
-    videoStartSeconds: videoStartSeconds ?? null,
-    videoEndSeconds: videoEndSeconds ?? null,
-    levels: levels?.map((level) => ({
-      stream: level.stream,
-      volume: level.volume,
-      offset_seconds: level.offsetSeconds,
-      start_seconds: level.startSeconds,
-      end_seconds: level.endSeconds,
-    })),
+    ...cutArgs({ startSeconds, endSeconds, levels, videoStartSeconds, videoEndSeconds }),
   });
 }
 
