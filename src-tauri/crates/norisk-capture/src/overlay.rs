@@ -3,6 +3,7 @@ use norisk_ipc::{ClipOverlay, Corner, OverlayKind};
 const BLUR_PASSES: usize = 3;
 
 const FONT: &[u8] = include_bytes!("../../../../public/fonts/smallcaps.ttf");
+#[cfg(test)]
 const NEUTRAL: u8 = 128;
 
 static PARSED: std::sync::OnceLock<Option<ab_glyph::FontRef<'static>>> =
