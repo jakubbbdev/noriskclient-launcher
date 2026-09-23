@@ -90,18 +90,22 @@ impl Gaps {
         Gaps(merged)
     }
 
-    fn shift(&self, pts: i64) -> Option<i64> {
+    fn squeeze(&self, pts: i64) -> i64 {
         let mut removed = 0i64;
         for &(from, to) in &self.0 {
             if pts < from {
                 break;
             }
             if pts < to {
-                return None;
+                return from - removed;
             }
             removed += to - from;
         }
-        Some(pts - removed)
+        pts - removed
+    }
+
+    fn shift(&self, pts: i64) -> Option<i64> {
+        (!self.0.iter().any(|&(from, to)| (from..to).contains(&pts))).then(|| self.squeeze(pts))
     }
 
     fn close(&self, packets: &[Packet]) -> Vec<Packet> {
@@ -176,6 +180,20 @@ pub fn to_vertical(
     let mut encoder = Encoder::open(width, height, clip.track.fps)?;
 
     let gaps = Gaps::new(&request.removed, clip.first_pts, want_start, want_end);
+    let overlays: Vec<norisk_ipc::ClipOverlay> = request
+        .blanked
+        .iter()
+        .map(|span| norisk_ipc::ClipOverlay {
+            kind: norisk_ipc::OverlayKind::Box { colour: 0x000000 },
+            left: 0.0,
+            top: 0.0,
+            width: 1.0,
+            height: 1.0,
+            start_seconds: span.start_seconds,
+            end_seconds: span.end_seconds,
+        })
+        .chain(request.overlays.iter().cloned())
+        .collect();
     let total = feed.len() as u32;
     let mut packets: Vec<Packet> = Vec::with_capacity(feed.len());
     let mut last = None;
@@ -196,7 +214,7 @@ pub fn to_vertical(
             return Ok(());
         };
         unsafe { (*frame.0).pts = pts };
-        paint(&frame, clip.first_pts, &request.overlays, &mut stamps)?;
+        paint(&frame, clip.first_pts, &overlays, &mut stamps)?;
         unsafe { (*frame.0).pts = shown };
         packets.extend(encoder.push(frame, crop)?);
         Ok(())
@@ -226,8 +244,10 @@ pub fn to_vertical(
         want_end,
     )
     .into_iter()
-    .map(|source| crate::trim::AudioSource {
+    .enumerate()
+    .map(|(index, source)| crate::trim::AudioSource {
         packets: gaps.close(&source.packets),
+        quiet: hushed(&request.muted, index as u32, clip.first_pts, &gaps),
         format: source.format,
     })
     .collect();
@@ -273,6 +293,17 @@ pub fn to_vertical(
         duration_seconds: written.duration_seconds,
         size_bytes: written.size_bytes,
     })
+}
+
+fn hushed(muted: &[norisk_ipc::TrackCut], stream: u32, origin: i64, gaps: &Gaps) -> Vec<(i64, i64)> {
+    let at = |seconds: f64| origin.saturating_add((seconds * TIME_BASE_DEN as f64) as i64);
+    muted
+        .iter()
+        .filter(|cut| cut.stream == stream)
+        .filter(|cut| cut.start_seconds.is_finite() && cut.end_seconds.is_finite())
+        .map(|cut| (gaps.squeeze(at(cut.start_seconds)), gaps.squeeze(at(cut.end_seconds))))
+        .filter(|(from, to)| to > from)
+        .collect()
 }
 
 fn paint(
@@ -1025,6 +1056,26 @@ mod tests {
 
         assert!(gaps.0.is_empty());
         assert_eq!(gaps.shift(12_345), Some(12_345));
+    }
+
+    #[test]
+    fn a_muted_stretch_follows_the_sound_when_an_earlier_stretch_is_cut_out() {
+        let second = TIME_BASE_DEN as i64;
+        let gaps = Gaps::new(&[span(1.0, 2.0)], 0, 0, 10 * second);
+        let cut = |stream, start_seconds, end_seconds| norisk_ipc::TrackCut {
+            stream,
+            start_seconds,
+            end_seconds,
+        };
+
+        let after = hushed(&[cut(2, 4.0, 5.0), cut(1, 4.0, 5.0)], 2, 0, &gaps);
+        assert_eq!(after, vec![(3 * second, 4 * second)], "the muted stretch did not move back with the sound");
+
+        let across = hushed(&[cut(2, 1.5, 3.0)], 2, 0, &gaps);
+        assert_eq!(across, vec![(second, 2 * second)], "a stretch reaching into the cut was not trimmed to it");
+
+        assert!(hushed(&[cut(2, 1.2, 1.8)], 2, 0, &gaps).is_empty(), "a stretch inside the cut still muted something");
+        assert!(hushed(&[cut(2, f64::NAN, 3.0)], 2, 0, &gaps).is_empty());
     }
 
     #[test]

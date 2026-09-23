@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 4;
 
 pub fn pipe_name(session_id: &str) -> String {
     format!(r"\\.\pipe\norisk-capture-{session_id}")
@@ -952,11 +952,23 @@ pub struct ExportVerticalRequest {
     pub levels: Vec<TrackLevel>,
     #[serde(default)]
     pub removed: Vec<Span>,
+    #[serde(default)]
+    pub blanked: Vec<Span>,
+    #[serde(default)]
+    pub muted: Vec<TrackCut>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Span {
+    pub start_seconds: f64,
+    pub end_seconds: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TrackCut {
+    pub stream: u32,
     pub start_seconds: f64,
     pub end_seconds: f64,
 }

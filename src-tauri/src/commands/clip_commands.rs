@@ -321,6 +321,8 @@ pub async fn clip_export_vertical(
     video_end_seconds: Option<f64>,
     levels: Option<Vec<norisk_ipc::TrackLevel>>,
     removed: Option<Vec<norisk_ipc::Span>>,
+    blanked: Option<Vec<norisk_ipc::Span>>,
+    muted: Option<Vec<norisk_ipc::TrackCut>>,
 ) -> Result<std::path::PathBuf, CommandError> {
     let dir = clip_dir().await?;
     let shape = shape.unwrap_or_default();
@@ -339,6 +341,8 @@ pub async fn clip_export_vertical(
             video_end_seconds,
             levels: levels.unwrap_or_default(),
             removed: removed.unwrap_or_default(),
+            blanked: blanked.unwrap_or_default(),
+            muted: muted.unwrap_or_default(),
         },
     ))?;
 

@@ -170,6 +170,7 @@ pub(crate) fn windowed_audio(
                         ..p.clone()
                     })
                     .collect(),
+                quiet: Vec::new(),
             }
         })
         .collect()
@@ -184,14 +185,24 @@ pub(crate) fn build_audio(
         return Ok(Vec::new());
     };
 
-    if !norisk_ipc::levels_change_anything(levels) {
+    let hushed = audio.iter().any(|source| !source.quiet.is_empty());
+    if !norisk_ipc::levels_change_anything(levels) && !hushed {
         return Ok(as_recorded(mix));
     }
 
-    let stems: Vec<&AudioSource> = audio.iter().skip(1).collect();
+    let mut stems: Vec<(u32, &AudioSource)> = audio
+        .iter()
+        .enumerate()
+        .skip(1)
+        .map(|(index, source)| (index as u32, source))
+        .collect();
     if stems.is_empty() {
-        log::info!("This clip was recorded before the tracks were kept apart, so its balance is fixed; copying the mix");
-        return Ok(as_recorded(mix));
+        if !mix.quiet.is_empty() {
+            stems.push((0, mix));
+        } else {
+            log::info!("This clip was recorded before the tracks were kept apart, so its balance is fixed; copying the mix");
+            return Ok(as_recorded(mix));
+        }
     }
 
     match remix(&stems, levels) {
@@ -225,24 +236,23 @@ fn as_recorded(source: &AudioSource) -> Vec<AudioTrack> {
 }
 
 #[cfg(windows)]
-fn remix(stems: &[&AudioSource], levels: &[norisk_ipc::TrackLevel]) -> Result<AudioTrack> {
+fn remix(stems: &[(u32, &AudioSource)], levels: &[norisk_ipc::TrackLevel]) -> Result<AudioTrack> {
     use crate::audio::decoder::decode_all;
     use crate::audio::encoder::{AudioEncoder, DEFAULT_BITRATE, OUTPUT_CHANNELS, OUTPUT_SAMPLE_RATE};
 
     let start_pts = stems
         .iter()
-        .filter_map(|stem| stem.packets.first().map(|p| p.pts))
+        .filter_map(|(_, stem)| stem.packets.first().map(|p| p.pts))
         .min()
         .context("none of the clip's separate tracks has any audio in this range")?;
 
     let mut mixed: Vec<f32> = Vec::new();
 
-    for (index, stem) in stems.iter().enumerate() {
+    for &(stream, stem) in stems {
         if stem.packets.is_empty() {
             continue;
         }
 
-        let stream = (index + 1) as u32;
         let gain = levels
             .iter()
             .find(|level| level.stream == stream)
@@ -253,12 +263,19 @@ fn remix(stems: &[&AudioSource], levels: &[norisk_ipc::TrackLevel]) -> Result<Au
             continue;
         }
 
-        let samples = decode_all(
+        let mut samples = decode_all(
             stem.format.sample_rate,
             stem.format.channels,
             &stem.format.extradata,
             &stem.packets,
         )?;
+        let frame_at = |pts: i64| {
+            ((pts - stem.packets[0].pts).max(0) as i128 * OUTPUT_SAMPLE_RATE as i128
+                / TIME_BASE_DEN as i128) as usize
+        };
+        for &(from, to) in &stem.quiet {
+            silence(&mut samples, OUTPUT_CHANNELS as usize, frame_at(from), frame_at(to));
+        }
 
         let offset = ((stem.packets[0].pts - start_pts).max(0) as i128
             * OUTPUT_SAMPLE_RATE as i128
@@ -316,6 +333,31 @@ fn remix(stems: &[&AudioSource], levels: &[norisk_ipc::TrackLevel]) -> Result<Au
     })
 }
 
+const FADE_FRAMES: usize = 240;
+
+pub(crate) fn silence(samples: &mut [f32], channels: usize, from: usize, to: usize) {
+    let frames = samples.len() / channels.max(1);
+    let (from, to) = (from.min(frames), to.min(frames));
+    if to <= from {
+        return;
+    }
+    let fade = FADE_FRAMES.min((to - from) / 2);
+    for frame in from..to {
+        let into = frame - from;
+        let left = to - frame - 1;
+        let keep = if into < fade {
+            1.0 - (into + 1) as f32 / (fade + 1) as f32
+        } else if left < fade {
+            1.0 - (left + 1) as f32 / (fade + 1) as f32
+        } else {
+            0.0
+        };
+        for sample in &mut samples[frame * channels..(frame + 1) * channels] {
+            *sample *= keep;
+        }
+    }
+}
+
 const MIN_TRIM_SECONDS: f64 = 0.5;
 
 pub(crate) fn usable_range(start: f64, end: f64, duration: f64) -> Result<(f64, f64)> {
@@ -345,6 +387,7 @@ pub(crate) struct SourceClip {
 pub(crate) struct AudioSource {
     pub(crate) format: AudioFormat,
     pub(crate) packets: Vec<Packet>,
+    pub(crate) quiet: Vec<(i64, i64)>,
 }
 
 #[derive(Clone)]
@@ -420,6 +463,7 @@ pub(crate) fn read(path: &Path) -> Result<SourceClip> {
             audio.push(AudioSource {
                 format: audio_format(format_ctx, *index)?,
                 packets: Vec::new(),
+                quiet: Vec::new(),
             });
             audio_bases.push((**(*format_ctx).streams.add(*index as usize)).time_base);
         }
@@ -809,6 +853,7 @@ mod tests {
                 label: label.to_string(),
             },
             packets: (0..packets as i64).map(|i| frame(i * 1_920, true)).collect(),
+            quiet: Vec::new(),
         }
     }
 
@@ -838,6 +883,40 @@ mod tests {
     }
 
     const PACKET: i64 = 1_920;
+
+    #[test]
+    fn a_silenced_stretch_goes_quiet_with_soft_edges_and_leaves_the_rest_alone() {
+        let channels = 2;
+        let frames = 4_000;
+        let mut samples = vec![0.5f32; frames * channels];
+
+        silence(&mut samples, channels, 1_000, 3_000);
+
+        let at = |frame: usize| samples[frame * channels];
+        assert_eq!(at(999), 0.5, "sound before the stretch changed");
+        assert_eq!(at(3_000), 0.5, "sound after the stretch changed");
+        assert_eq!(at(2_000), 0.0, "the middle of the stretch is not silent");
+        assert!(at(1_000) > 0.0 && at(1_000) < 0.5, "the stretch starts with a hard click");
+        assert!(at(2_999) > 0.0 && at(2_999) < 0.5, "the stretch ends with a hard click");
+        assert!(
+            (1_000..1_240).all(|frame| at(frame) >= at(frame + 1)),
+            "the fade out is not a steady slope",
+        );
+        assert!(samples.chunks(channels).all(|frame| frame[0] == frame[1]), "the channels drifted apart");
+    }
+
+    #[test]
+    fn silencing_past_the_end_or_backwards_does_not_panic() {
+        let mut samples = vec![0.5f32; 100];
+
+        silence(&mut samples, 2, 40, 10_000);
+        assert!(samples[..80].iter().all(|s| *s == 0.5));
+
+        let before = samples.clone();
+        silence(&mut samples, 2, 30, 10);
+        silence(&mut samples, 0, 0, 10);
+        assert_eq!(samples.len(), before.len());
+    }
 
     fn as_seconds(ticks: i64) -> f64 {
         ticks as f64 / TIME_BASE_DEN as f64
