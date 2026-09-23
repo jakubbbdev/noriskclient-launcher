@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 pub fn pipe_name(session_id: &str) -> String {
     format!(r"\\.\pipe\norisk-capture-{session_id}")
@@ -327,6 +327,7 @@ pub enum ErrorCode {
     NotRecording,
     Paused,
     Internal,
+    Protocol,
 }
 
 pub fn encode_line<T: Serialize>(message: &T) -> serde_json::Result<String> {
@@ -603,6 +604,32 @@ mod tests {
     }
 
     #[test]
+    fn a_level_speaks_camel_case_on_the_wire_like_the_other_requests() {
+        let level: TrackLevel = serde_json::from_str(
+            r#"{"stream":1,"volume":90,"offsetSeconds":0.5,"startSeconds":2.0,"endSeconds":8.0}"#,
+        )
+        .unwrap();
+        assert_eq!(level.offset_seconds, 0.5);
+        assert_eq!(level.start_seconds, Some(2.0));
+        assert_eq!(level.end_seconds, Some(8.0));
+
+        let written = serde_json::to_string(&level).unwrap();
+        assert!(written.contains("\"offsetSeconds\""), "{written}");
+        assert!(!written.contains("offset_seconds"), "{written}");
+    }
+
+    #[test]
+    fn a_level_with_a_field_it_does_not_know_is_refused_instead_of_quietly_zeroed() {
+        let wrong = serde_json::from_str::<TrackLevel>(
+            r#"{"stream":1,"volume":90,"offset_seconds":0.5}"#,
+        );
+        assert!(
+            wrong.is_err(),
+            "a misspelt field must fail loudly, not arrive as an offset of zero",
+        );
+    }
+
+    #[test]
     fn an_offset_on_its_own_counts_as_a_change() {
         let still = TrackLevel {
             stream: 1,
@@ -774,6 +801,7 @@ pub struct TrimClipRequest {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TrackLevel {
     pub stream: u32,
     pub volume: u32,
