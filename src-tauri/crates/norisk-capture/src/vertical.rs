@@ -126,6 +126,7 @@ pub fn to_vertical(
     let total = feed.len() as u32;
     let mut packets: Vec<Packet> = Vec::with_capacity(feed.len());
     let mut last = None;
+    let mut stamps = crate::overlay::Stamps::default();
     let mut take = |frame: Frame| -> Result<()> {
         let pts = unsafe {
             if (*frame.0).pts == ff::AV_NOPTS_VALUE {
@@ -139,7 +140,7 @@ pub fn to_vertical(
         };
         last = Some(pts);
         unsafe { (*frame.0).pts = pts };
-        paint(&frame, clip.first_pts, &request.overlays)?;
+        paint(&frame, clip.first_pts, &request.overlays, &mut stamps)?;
         packets.extend(encoder.push(frame, crop)?);
         Ok(())
     };
@@ -211,8 +212,13 @@ pub fn to_vertical(
     })
 }
 
-fn paint(frame: &Frame, origin: i64, overlays: &[norisk_ipc::ClipOverlay]) -> Result<()> {
-    use crate::overlay::{apply, covers, halve, rect_in, Plane};
+fn paint(
+    frame: &Frame,
+    origin: i64,
+    overlays: &[norisk_ipc::ClipOverlay],
+    stamps: &mut crate::overlay::Stamps,
+) -> Result<()> {
+    use crate::overlay::{covers, halve, rect_in, Plane};
 
     if overlays.is_empty() {
         return Ok(());
@@ -220,7 +226,11 @@ fn paint(frame: &Frame, origin: i64, overlays: &[norisk_ipc::ClipOverlay]) -> Re
 
     unsafe {
         let seconds = ((*frame.0).pts - origin) as f64 / TIME_BASE_DEN as f64;
-        let wanted: Vec<_> = overlays.iter().filter(|o| covers(o, seconds)).collect();
+        let wanted: Vec<_> = overlays
+            .iter()
+            .enumerate()
+            .filter(|(_, overlay)| covers(overlay, seconds))
+            .collect();
         if wanted.is_empty() {
             return Ok(());
         }
@@ -235,7 +245,7 @@ fn paint(frame: &Frame, origin: i64, overlays: &[norisk_ipc::ClipOverlay]) -> Re
         let chroma_width = width.div_ceil(2);
         let chroma_height = height.div_ceil(2);
 
-        for overlay in wanted {
+        for (number, overlay) in wanted {
             let Some(rect) = rect_in(overlay, width, height) else {
                 continue;
             };
@@ -251,7 +261,7 @@ fn paint(frame: &Frame, origin: i64, overlays: &[norisk_ipc::ClipOverlay]) -> Re
                 height,
                 channel: crate::overlay::Channel::Luma,
             };
-            apply(&mut luma, rect, &overlay.kind);
+            stamps.apply(number, &mut luma, rect, &overlay.kind);
 
             let chroma = halve(rect);
             for index in 1..3 {
@@ -273,7 +283,7 @@ fn paint(frame: &Frame, origin: i64, overlays: &[norisk_ipc::ClipOverlay]) -> Re
                         crate::overlay::Channel::Red
                     },
                 };
-                apply(&mut plane, chroma, &overlay.kind);
+                stamps.apply(number, &mut plane, chroma, &overlay.kind);
             }
         }
     }
@@ -424,19 +434,37 @@ struct Encoder {
     packet: *mut ff::AVPacket,
 }
 
+const RENDER_ENCODERS: [&std::ffi::CStr; 3] = [c"h264_nvenc", c"h264_amf", c"libx264"];
+
 impl Encoder {
     fn open(width: u32, height: u32, fps: u32) -> Result<Self> {
+        for name in RENDER_ENCODERS {
+            match Self::open_with(Some(name), width, height, fps) {
+                Ok(encoder) => {
+                    log::info!("Rendering with {}", name.to_string_lossy());
+                    return Ok(encoder);
+                }
+                Err(e) => log::debug!("{} cannot render here: {e:#}", name.to_string_lossy()),
+            }
+        }
+        Self::open_with(None, width, height, fps)
+    }
+
+    fn open_with(
+        name: Option<&std::ffi::CStr>,
+        width: u32,
+        height: u32,
+        fps: u32,
+    ) -> Result<Self> {
         unsafe {
-            let name = c"libx264";
-            let codec = ff::avcodec_find_encoder_by_name(name.as_ptr());
-            let codec = if codec.is_null() {
-                ff::avcodec_find_encoder(ff::AVCodecID::AV_CODEC_ID_H264)
-            } else {
-                codec
+            let codec = match name {
+                Some(name) => ff::avcodec_find_encoder_by_name(name.as_ptr()),
+                None => ff::avcodec_find_encoder(ff::AVCodecID::AV_CODEC_ID_H264),
             };
             if codec.is_null() {
-                bail!("no H.264 encoder in this FFmpeg build");
+                bail!("not in this FFmpeg build");
             }
+            let hardware = matches!(name, Some(name) if name != c"libx264");
 
             let context = ff::avcodec_alloc_context3(codec);
             if context.is_null() {
@@ -469,8 +497,16 @@ impl Encoder {
             (*context).chroma_sample_location = crate::encoder::video::CHROMA_LOCATION;
             (*context).flags |= ff::AV_CODEC_FLAG_GLOBAL_HEADER as i32;
             (*context).thread_count = 0;
+            if hardware {
+                (*context).max_b_frames = 0;
+            }
             if !(*context).priv_data.is_null() {
-                ff::av_opt_set((*context).priv_data, c"preset".as_ptr(), c"veryfast".as_ptr(), 0);
+                let (key, value) = match name {
+                    Some(name) if name == c"h264_nvenc" => (c"preset", c"p4"),
+                    Some(name) if name == c"h264_amf" => (c"quality", c"speed"),
+                    _ => (c"preset", c"veryfast"),
+                };
+                ff::av_opt_set((*context).priv_data, key.as_ptr(), value.as_ptr(), 0);
             }
 
             let rc = ff::avcodec_open2(context, codec, std::ptr::null_mut());
@@ -910,6 +946,61 @@ mod probe {
 
 #[cfg(test)]
 mod render_tests {
+    #[test]
+    #[ignore = "measures time on a real clip in NRC_TEST_CLIP"]
+    fn what_overlays_cost_on_top_of_a_plain_render() {
+        let source = std::path::PathBuf::from(std::env::var("NRC_TEST_CLIP").unwrap());
+        let overlay = |kind: norisk_ipc::OverlayKind, left: f32, top: f32| norisk_ipc::ClipOverlay {
+            kind,
+            left,
+            top,
+            width: 0.3,
+            height: 0.2,
+            start_seconds: 0.0,
+            end_seconds: 999.0,
+        };
+        let four = vec![
+            overlay(norisk_ipc::OverlayKind::Blur { strength: 12 }, 0.05, 0.05),
+            overlay(norisk_ipc::OverlayKind::Box { colour: 0x000000 }, 0.6, 0.05),
+            overlay(
+                norisk_ipc::OverlayKind::Arrow {
+                    colour: 0xff3b30,
+                    thickness: 6,
+                    towards: norisk_ipc::Corner::BottomRight,
+                },
+                0.05,
+                0.6,
+            ),
+            overlay(
+                norisk_ipc::OverlayKind::Text {
+                    content: "NORISK".into(),
+                    size: 48,
+                    colour: 0xffffff,
+                },
+                0.6,
+                0.6,
+            ),
+        ];
+
+        for (label, overlays) in [("plain", Vec::new()), ("four overlays", four)] {
+            let request = norisk_ipc::ExportVerticalRequest {
+                source: source.clone(),
+                destination: std::env::temp_dir().join(format!("nrc-cost-{}.mp4", overlays.len())),
+                shape: norisk_ipc::ClipShape::Original,
+                overlays,
+                ..Default::default()
+            };
+            let _ = std::fs::remove_file(&request.destination);
+            let started = std::time::Instant::now();
+            let result = super::to_vertical(&request, |_, _| {}).unwrap();
+            println!(
+                "{label}: {:.2}s for {:.1}s of clip",
+                started.elapsed().as_secs_f64(),
+                result.duration_seconds,
+            );
+        }
+    }
+
     #[test]
     #[ignore = "needs a real clip in NRC_TEST_CLIP"]
     fn a_real_clip_takes_a_blur_an_arrow_and_some_text() {
