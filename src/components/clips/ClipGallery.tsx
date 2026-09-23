@@ -21,12 +21,15 @@ import {
   getClipStorageUsage,
   listClips,
   revealClip,
+  samePath,
   trimClip,
   type ClipDetails,
   type ClipEntry,
   type ClipStorageUsage,
+  type ExportedClip,
   type ExportedGif,
   type TrackLevel,
+  type TrimmedClip,
 } from "../../services/clip-service";
 import { ClipTrimmer } from "./ClipTrimmer";
 import { ClipIconButton } from "./ClipIconButton";
@@ -70,11 +73,22 @@ export function ClipGallery({
       const [entries, storage] = await Promise.all([listClips(), getClipStorageUsage()]);
       setClips(entries);
       setUsage(storage);
+      return entries;
     } catch (e) {
       console.error("Could not read the clip folder", e);
       setClips([]);
+      return [];
     }
   }, []);
+
+  const follow = useCallback(
+    async (made: { path: string; source: string }) => {
+      const fresh = (await refresh()).find((entry) => samePath(entry.path, made.path));
+      if (!fresh) return;
+      setSelected((current) => (current && samePath(current.path, made.source) ? fresh : current));
+    },
+    [refresh],
+  );
 
   useEffect(() => {
     void refresh();
@@ -98,8 +112,8 @@ export function ClipGallery({
       const { listen } = await import("@tauri-apps/api/event");
       const stops = await Promise.all([
         listen("clip_saved", () => void refresh()),
-        listen("clip_trimmed", () => void refresh()),
-        listen("clip_exported", () => void refresh()),
+        listen<TrimmedClip>("clip_trimmed", (event) => void follow(event.payload)),
+        listen<ExportedClip>("clip_exported", (event) => void follow(event.payload)),
         listen<ExportedGif>("clip_gif_exported", (event) => {
           setBusy(null);
           toast.success(
@@ -113,7 +127,7 @@ export function ClipGallery({
       unlisten = () => stops.forEach((stop) => stop());
     })();
     return () => unlisten?.();
-  }, [refresh, t]);
+  }, [follow, refresh, t]);
 
   const makeGif = useCallback(
     async (clip: ClipEntry) => {
@@ -323,6 +337,7 @@ export function ClipGallery({
 
       {selected && (
         <ClipPlayer
+          key={selected.path}
           clip={selected}
           onClose={() => setSelected(null)}
           onVertical={() => setVertical(selected)}
