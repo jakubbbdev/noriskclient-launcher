@@ -2705,7 +2705,7 @@
   "clips.editor.transport.remove": "Wytnij zaznaczoną część",
   "clips.editor.remove.restore": "Przywróć ten fragment",
   "clips.editor.split.remove": "Usuń to cięcie",
-  "clips.editor.remove.hint": "Przetnij w dwóch miejscach, kliknij część pomiędzy i ją wytnij. Ciemne luki zostaną pominięte w zapisanym klipie, obraz i dźwięk; strzałka w luce ją przywraca.",
+  "clips.editor.remove.hint": "Przetnij w dwóch miejscach, kliknij część pomiędzy i ją wytnij. Przy połączonych ścieżkach część znika ze wszystkiego; przy rozdzielonych cięta jest tylko kliknięta ścieżka: obraz robi się czarny albo ten dźwięk cichnie. Strzałka w luce ją przywraca.",
   "clips.editor.timeline.video": "Obraz",
   "clips.editor.overlay.window": "Widoczne od {{from}} do {{to}}",
   "clips.editor.tools.hint": "Wybierz narzędzie, aby umieścić je na obrazie, a potem przeciągnij je na miejsce.",

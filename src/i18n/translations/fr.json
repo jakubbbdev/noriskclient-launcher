@@ -2695,7 +2695,7 @@
   "clips.editor.transport.remove": "Retirer la partie sélectionnée",
   "clips.editor.remove.restore": "Remettre ce passage",
   "clips.editor.split.remove": "Supprimer cette coupe",
-  "clips.editor.remove.hint": "Coupe à deux endroits, clique sur la partie entre les deux et retire-la. Les trous sombres sont retirés du clip enregistré, image et son compris ; la flèche dans un trou le remet.",
+  "clips.editor.remove.hint": "Coupe à deux endroits, clique sur la partie entre les deux et retire-la. Pistes liées, la partie disparaît de tout ; pistes séparées, seule la piste cliquée est coupée : l'image devient noire ou ce son se tait. La flèche dans un trou le remet.",
   "clips.editor.timeline.video": "Vidéo",
   "clips.editor.overlay.window": "Visible de {{from}} à {{to}}",
   "clips.editor.tools.hint": "Choisis un outil pour le poser sur l'image, puis fais-le glisser au bon endroit.",

@@ -149,6 +149,8 @@ export async function exportVertical(
     overlays,
     ...(cut ? cutArgs(cut) : {}),
     removed: cut?.removed ?? [],
+    blanked: cut?.blanked ?? [],
+    muted: cut?.muted ?? [],
   });
 }
 
@@ -221,6 +223,10 @@ export interface Span {
   endSeconds: number;
 }
 
+export interface TrackCut extends Span {
+  stream: number;
+}
+
 export interface ClipCut {
   startSeconds: number;
   endSeconds: number;
@@ -228,6 +234,8 @@ export interface ClipCut {
   videoStartSeconds?: number | null;
   videoEndSeconds?: number | null;
   removed?: Span[];
+  blanked?: Span[];
+  muted?: TrackCut[];
 }
 
 function cutArgs(cut: ClipCut) {

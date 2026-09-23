@@ -3,7 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
-import { prepareClipPreview, samePath, type PreviewTrack, type TrackLevel } from "../../services/clip-service";
+import {
+  prepareClipPreview,
+  samePath,
+  type PreviewTrack,
+  type Span,
+  type TrackLevel,
+} from "../../services/clip-service";
 
 export type PreviewState = "unavailable" | "loading" | "live";
 
@@ -11,10 +17,11 @@ interface Options {
   path: string;
   video: React.RefObject<HTMLVideoElement | null>;
   levels: TrackLevel[];
+  muted: Record<number, Span[]>;
   active: boolean;
 }
 
-export function useTrimPreview({ path, video, levels, active }: Options): PreviewState {
+export function useTrimPreview({ path, video, levels, muted, active }: Options): PreviewState {
   const [state, setState] = useState<PreviewState>("loading");
   const context = useRef<AudioContext | null>(null);
   const buffers = useRef<Map<number, AudioBuffer>>(new Map());
@@ -23,6 +30,8 @@ export function useTrimPreview({ path, video, levels, active }: Options): Previe
 
   const wanted = useRef(levels);
   wanted.current = levels;
+  const quiet = useRef(muted);
+  quiet.current = muted;
 
   useEffect(() => {
     if (!active) return;
@@ -145,10 +154,19 @@ export function useTrimPreview({ path, video, levels, active }: Options): Previe
         const span = closes === null ? undefined : closes - enter;
         if (span !== undefined && span <= 0) continue;
 
+        const now = audio.currentTime;
+        const hush = audio.createGain();
+        for (const gap of quiet.current[stream] ?? []) {
+          if (gap.endSeconds <= at) continue;
+          hush.gain.setValueAtTime(0, now + Math.max(0, gap.startSeconds - at));
+          hush.gain.setValueAtTime(1, now + gap.endSeconds - at);
+        }
+        hush.connect(gain);
+
         const source = audio.createBufferSource();
         source.buffer = buffer;
-        source.connect(gain);
-        source.start(audio.currentTime + (enter - at), head, span);
+        source.connect(hush);
+        source.start(now + (enter - at), head, span);
         playing.current.push(source);
       }
     };

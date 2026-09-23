@@ -2695,7 +2695,7 @@
   "clips.editor.transport.remove": "Recortar la parte seleccionada",
   "clips.editor.remove.restore": "Recuperar este tramo",
   "clips.editor.split.remove": "Quitar este corte",
-  "clips.editor.remove.hint": "Corta en dos puntos, haz clic en la parte intermedia y recórtala. Los huecos oscuros no aparecen en el clip guardado, ni imagen ni sonido; la flecha de un hueco lo recupera.",
+  "clips.editor.remove.hint": "Corta en dos puntos, haz clic en la parte intermedia y recórtala. Con las pistas unidas la parte desaparece de todo; separadas, solo se corta la pista en la que hiciste clic: la imagen se vuelve negra o ese sonido se silencia. La flecha de un hueco lo recupera.",
   "clips.editor.timeline.video": "Vídeo",
   "clips.editor.overlay.window": "Visible de {{from}} a {{to}}",
   "clips.editor.tools.hint": "Elige una herramienta para colocarla en la imagen y arrástrala donde corresponda.",

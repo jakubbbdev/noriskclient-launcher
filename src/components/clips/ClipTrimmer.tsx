@@ -155,6 +155,8 @@ interface LaneTrim {
   edge: "start" | "end";
 }
 
+type PartLane = "all" | "video" | number;
+
 interface LaneWindow {
   start: number | null;
   end: number | null;
@@ -225,6 +227,9 @@ export function ClipTrimmer({
   const [laneTrim, setLaneTrim] = useState<LaneTrim | null>(null);
   const [removed, setRemoved] = useState<Span[]>([]);
   const [splits, setSplits] = useState<number[]>([]);
+  const [blanked, setBlanked] = useState<Span[]>([]);
+  const [muted, setMuted] = useState<Record<number, Span[]>>({});
+  const [pick, setPick] = useState<{ lane: PartLane; at: number } | null>(null);
   const [rendering, setRendering] = useState<RenderProgress | null>(null);
   const renderingRef = useRef(false);
   const leave = useRef(onCancel);
@@ -259,13 +264,31 @@ export function ClipTrimmer({
       separate,
       removed,
       splits,
+      blanked,
+      muted,
     }),
-    [end, offsets, overlays, picture, removed, separate, shape, splits, start, volumes, windows],
+    [
+      blanked,
+      end,
+      muted,
+      offsets,
+      overlays,
+      picture,
+      removed,
+      separate,
+      shape,
+      splits,
+      start,
+      volumes,
+      windows,
+    ],
   );
   const restore = useCallback((saved: typeof doc) => {
     setOverlays(saved.overlays);
     setRemoved(saved.removed);
     setSplits(saved.splits);
+    setBlanked(saved.blanked);
+    setMuted(saved.muted);
     setStart(saved.start);
     setEnd(saved.end);
     setPicture(saved.picture);
@@ -313,6 +336,7 @@ export function ClipTrimmer({
     path,
     video: videoRef,
     levels,
+    muted,
     active: adjustable.length > 0,
   });
 
@@ -595,32 +619,56 @@ export function ClipTrimmer({
     setSplits((current) => [...current, tidy(playhead)].sort((a, b) => a - b));
   }, [canSplit, playhead]);
 
-  const part = useMemo((): Span | null => {
-    if (splits.length === 0 || playing || inside(playhead)) return null;
-    const edges = [shot.from, ...splits.filter((at) => at > shot.from && at < shot.to), shot.to];
+  const part = useMemo((): { lane: PartLane; span: Span } | null => {
+    if (!pick || splits.length === 0) return null;
+    const lane: PartLane = separate ? pick.lane : "all";
+    const range =
+      typeof lane === "number" ? laneWindow(windows[lane], start, end) : { from: shot.from, to: shot.to };
+    const own = lane === "video" ? blanked : typeof lane === "number" ? (muted[lane] ?? []) : [];
+    if (inside(pick.at) || own.some((span) => pick.at >= span.startSeconds && pick.at < span.endSeconds)) {
+      return null;
+    }
+    const edges = [range.from, ...splits.filter((at) => at > range.from && at < range.to), range.to];
     for (let i = 1; i < edges.length; i++) {
-      if (playhead >= edges[i - 1] && playhead < edges[i]) {
-        return { startSeconds: edges[i - 1], endSeconds: edges[i] };
+      if (pick.at >= edges[i - 1] && pick.at < edges[i]) {
+        return { lane, span: { startSeconds: edges[i - 1], endSeconds: edges[i] } };
       }
     }
     return null;
-  }, [inside, playhead, playing, shot.from, shot.to, splits]);
+  }, [blanked, end, inside, muted, pick, separate, shot.from, shot.to, splits, start, windows]);
 
-  const cuttable = part !== null && kept - (part.endSeconds - part.startSeconds) >= MIN_LENGTH;
+  const cuttable =
+    part !== null &&
+    (part.lane !== "all" || kept - (part.span.endSeconds - part.span.startSeconds) >= MIN_LENGTH);
 
   const cutPart = useCallback(() => {
     if (!part || !cuttable) return;
-    setRemoved((current) => merged([...current, part]));
+    const { lane, span } = part;
+    if (lane === "all") setRemoved((current) => merged([...current, span]));
+    else if (lane === "video") setBlanked((current) => merged([...current, span]));
+    else setMuted((current) => ({ ...current, [lane]: merged([...(current[lane] ?? []), span]) }));
   }, [cuttable, part]);
+
+  const hushed = useMemo(
+    () =>
+      Object.entries(muted).flatMap(([stream, spans]) =>
+        spans.map((span) => ({ stream: Number(stream), ...span })),
+      ),
+    [muted],
+  );
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || removed.length === 0) return;
+    const quiet = previewState === "live" ? [] : hushed;
+    if (!video || (removed.length === 0 && quiet.length === 0)) return;
     let frame = 0;
     const hop = () => {
       const now = video.currentTime;
       const hole = removed.find((span) => now >= span.startSeconds && now < span.endSeconds);
       if (hole) video.currentTime = hole.endSeconds;
+      if (quiet.length > 0) {
+        video.muted = quiet.some((span) => now >= span.startSeconds && now < span.endSeconds);
+      }
       if (!video.paused) frame = requestAnimationFrame(hop);
     };
     const onPlay = () => {
@@ -632,8 +680,9 @@ export function ClipTrimmer({
     return () => {
       video.removeEventListener("play", onPlay);
       cancelAnimationFrame(frame);
+      if (quiet.length > 0) video.muted = false;
     };
-  }, [removed]);
+  }, [hushed, previewState, removed]);
 
   useEffect(() => {
     let stop: (() => void) | undefined;
@@ -675,7 +724,13 @@ export function ClipTrimmer({
   }, [path, t]);
 
   const save = useCallback(async () => {
-    if (overlays.length === 0 && shape === "original" && removed.length === 0) {
+    if (
+      overlays.length === 0 &&
+      shape === "original" &&
+      removed.length === 0 &&
+      blanked.length === 0 &&
+      hushed.length === 0
+    ) {
       onSave(start, end, levels, shot.start, shot.end);
       return;
     }
@@ -689,6 +744,8 @@ export function ClipTrimmer({
         videoStartSeconds: shot.start,
         videoEndSeconds: shot.end,
         removed,
+        blanked,
+        muted: hushed,
       });
     } catch (e) {
       console.error("Could not render the clip", e);
@@ -696,7 +753,20 @@ export function ClipTrimmer({
       setRendering(null);
       toast.error(parseErrorMessage(e));
     }
-  }, [end, levels, onSave, overlays, path, removed, shape, shot.end, shot.start, start]);
+  }, [
+    blanked,
+    end,
+    hushed,
+    levels,
+    onSave,
+    overlays,
+    path,
+    removed,
+    shape,
+    shot.end,
+    shot.start,
+    start,
+  ]);
 
   const guide = useMemo(() => {
     const target = SHAPES.find((entry) => entry.choice === shape)?.ratio;
@@ -788,6 +858,50 @@ export function ClipTrimmer({
       />
     </>
   );
+
+  const highlight = (span: Span) => (
+    <div
+      className="absolute inset-y-0 rounded-md border-2"
+      style={{
+        left: `${percent(span.startSeconds)}%`,
+        width: `${percent(span.endSeconds - span.startSeconds)}%`,
+        borderColor: accentColor.value,
+        backgroundColor: `${accentColor.value}1f`,
+      }}
+    />
+  );
+
+  const gapBlock = (span: Span, key: number, onRestore: () => void) => (
+    <div
+      key={key}
+      className="absolute inset-y-0 border-x border-dashed border-white/30 bg-[#08080b]/90"
+      style={{
+        left: `${percent(span.startSeconds)}%`,
+        width: `${percent(span.endSeconds - span.startSeconds)}%`,
+      }}
+    >
+      <button
+        type="button"
+        aria-label={t("clips.editor.remove.restore")}
+        title={t("clips.editor.remove.restore")}
+        disabled={busy}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={onRestore}
+        className="pointer-events-auto absolute left-1/2 top-0.5 flex h-4 w-4 -translate-x-1/2 items-center justify-center rounded-full text-white/40 transition-colors hover:text-white"
+      >
+        <Icon icon="solar:restart-bold" className="h-3 w-3" />
+      </button>
+    </div>
+  );
+
+  const laneMarks = (lane: PartLane, gaps: Span[], restore: (index: number) => void) => (
+    <div className="pointer-events-none absolute inset-0">
+      {part?.lane === lane && highlight(part.span)}
+      {gaps.map((span, index) => gapBlock(span, index, () => restore(index)))}
+    </div>
+  );
+
+  const darkened = blanked.some((span) => playhead >= span.startSeconds && playhead < span.endSeconds);
 
   return (
     <div className="fixed inset-0 z-[1000] flex bg-black/70 p-4 backdrop-blur-md-anyos">
@@ -1024,6 +1138,8 @@ export function ClipTrimmer({
                 </span>
               </button>
             )}
+
+            {darkened && <div className="pointer-events-none absolute inset-0 bg-black" />}
 
             {guide && (
               <div
@@ -1308,6 +1424,7 @@ export function ClipTrimmer({
             onScrub={(clientX) => {
               scrubTo(clientX);
               setScrubbing(true);
+              setPick({ lane: "video", at: secondsAt(clientX) });
             }}
           >
             {filmstrip ? (
@@ -1321,6 +1438,10 @@ export function ClipTrimmer({
               <div className="absolute inset-0 flex items-center justify-center">
                 <Icon icon="svg-spinners:ring-resize" className="h-4 w-4 text-white/40" />
               </div>
+            )}
+
+            {laneMarks("video", blanked, (index) =>
+              setBlanked((current) => current.filter((_, at) => at !== index)),
             )}
 
             {separate && (
@@ -1354,13 +1475,20 @@ export function ClipTrimmer({
                 onChange={(volume) =>
                   setVolumes((current) => ({ ...current, [track.stream]: volume }))
                 }
-                onGrab={(event) =>
+                onGrab={(event) => {
+                  setPick({ lane: track.stream, at: secondsAt(event.clientX) });
                   setLaneDrag({
                     stream: track.stream,
                     fromX: event.clientX,
                     offsetSeconds: offsets[track.stream] ?? 0,
-                  })
-                }
+                  });
+                }}
+                marks={laneMarks(track.stream, muted[track.stream] ?? [], (index) =>
+                  setMuted((current) => ({
+                    ...current,
+                    [track.stream]: (current[track.stream] ?? []).filter((_, at) => at !== index),
+                  })),
+                )}
                 onNudge={(by) => shiftTrack(track.stream, (offsets[track.stream] ?? 0) + by)}
                 onReset={() => shiftTrack(track.stream, 0)}
                 onTrim={(edge) => setLaneTrim({ stream: track.stream, edge })}
@@ -1399,39 +1527,12 @@ export function ClipTrimmer({
 
           <div className="pointer-events-none absolute inset-y-0 left-44 right-0">
             {!separate && clipMasks(start, end)}
-            {part && (
-              <div
-                className="absolute inset-y-0 rounded-md border-2"
-                style={{
-                  left: `${percent(part.startSeconds)}%`,
-                  width: `${percent(part.endSeconds - part.startSeconds)}%`,
-                  borderColor: accentColor.value,
-                  backgroundColor: `${accentColor.value}1f`,
-                }}
-              />
+            {part?.lane === "all" && highlight(part.span)}
+            {removed.map((span, index) =>
+              gapBlock(span, index, () =>
+                setRemoved((current) => current.filter((_, at) => at !== index)),
+              ),
             )}
-            {removed.map((span, index) => (
-              <div
-                key={index}
-                className="absolute inset-y-0 border-x border-dashed border-white/30 bg-[#08080b]/90"
-                style={{
-                  left: `${percent(span.startSeconds)}%`,
-                  width: `${percent(span.endSeconds - span.startSeconds)}%`,
-                }}
-              >
-                <button
-                  type="button"
-                  aria-label={t("clips.editor.remove.restore")}
-                  title={t("clips.editor.remove.restore")}
-                  disabled={busy}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={() => setRemoved((current) => current.filter((_, at) => at !== index))}
-                  className="pointer-events-auto absolute left-1/2 top-0.5 flex h-4 w-4 -translate-x-1/2 items-center justify-center rounded-full text-white/40 transition-colors hover:text-white"
-                >
-                  <Icon icon="solar:restart-bold" className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
             {splits.map((at) => (
               <div
                 key={at}
@@ -1620,6 +1721,7 @@ function AudioLane({
   onTrim,
   onTrimNudge,
   onTrimReset,
+  marks,
   t,
 }: {
   track: ClipAudioTrack;
@@ -1643,6 +1745,7 @@ function AudioLane({
   onTrim: (edge: "start" | "end") => void;
   onTrimNudge: (edge: "start" | "end", by: number) => void;
   onTrimReset: () => void;
+  marks: ReactNode;
   t: Translate;
 }) {
   const muted = volume === 0;
@@ -1707,6 +1810,8 @@ function AudioLane({
           className="absolute inset-0 cursor-grab focus:outline-none focus-visible:ring-1 focus-visible:ring-white/60"
         />
       )}
+
+      {marks}
 
       {shiftable && (
         <div className="pointer-events-none absolute inset-0 z-10">

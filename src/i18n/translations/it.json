@@ -2695,7 +2695,7 @@
   "clips.editor.transport.remove": "Rimuovi la parte selezionata",
   "clips.editor.remove.restore": "Rimetti questo tratto",
   "clips.editor.split.remove": "Rimuovi questo taglio",
-  "clips.editor.remove.hint": "Taglia in due punti, clicca sulla parte in mezzo e rimuovila. I vuoti scuri non compaiono nella clip salvata, né immagine né audio; la freccia in un vuoto lo rimette.",
+  "clips.editor.remove.hint": "Taglia in due punti, clicca sulla parte in mezzo e rimuovila. Con le tracce unite la parte sparisce da tutto; separate, viene tagliata solo la traccia cliccata: l'immagine diventa nera o quell'audio tace. La freccia in un vuoto lo rimette.",
   "clips.editor.timeline.video": "Video",
   "clips.editor.overlay.window": "Visibile da {{from}} a {{to}}",
   "clips.editor.tools.hint": "Scegli uno strumento per posarlo sull'immagine, poi trascinalo dove serve.",

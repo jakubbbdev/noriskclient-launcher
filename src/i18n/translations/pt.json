@@ -2695,7 +2695,7 @@
   "clips.editor.transport.remove": "Remover a parte selecionada",
   "clips.editor.remove.restore": "Restaurar este trecho",
   "clips.editor.split.remove": "Remover este corte",
-  "clips.editor.remove.hint": "Corte em dois pontos, clique na parte do meio e remova-a. As lacunas escuras ficam fora do clipe salvo, imagem e som; a seta em uma lacuna a traz de volta.",
+  "clips.editor.remove.hint": "Corte em dois pontos, clique na parte do meio e remova-a. Com as faixas ligadas a parte some de tudo; separadas, só a faixa clicada é cortada: a imagem fica preta ou aquele som fica mudo. A seta em uma lacuna a traz de volta.",
   "clips.editor.timeline.video": "Vídeo",
   "clips.editor.overlay.window": "Visível de {{from}} a {{to}}",
   "clips.editor.tools.hint": "Escolhe uma ferramenta para a pousar na imagem e arrasta-a para o sítio certo.",

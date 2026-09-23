@@ -2695,7 +2695,7 @@
   "clips.editor.transport.remove": "Seçili bölümü çıkar",
   "clips.editor.remove.restore": "Bu bölümü geri koy",
   "clips.editor.split.remove": "Bu kesimi kaldır",
-  "clips.editor.remove.hint": "İki yerden kes, aradaki bölüme tıkla ve çıkar. Koyu boşluklar kaydedilen klipte yer almaz, ne görüntü ne ses; boşluktaki ok onu geri getirir.",
+  "clips.editor.remove.hint": "İki yerden kes, aradaki bölüme tıkla ve çıkar. Parçalar bağlıysa bölüm her şeyden çıkar; ayrıysa yalnızca tıkladığın parça kesilir: görüntü kararır ya da o ses susar. Boşluktaki ok onu geri getirir.",
   "clips.editor.timeline.video": "Görüntü",
   "clips.editor.overlay.window": "{{from}} ile {{to}} arasında görünür",
   "clips.editor.tools.hint": "Bir aracı görüntüye bırakmak için seç, sonra olması gereken yere sürükle.",

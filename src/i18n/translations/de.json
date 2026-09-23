@@ -2424,7 +2424,7 @@
   "clips.editor.transport.remove": "Ausgewählten Teil ausschneiden",
   "clips.editor.remove.restore": "Diese Stelle wieder einfügen",
   "clips.editor.split.remove": "Schnitt entfernen",
-  "clips.editor.remove.hint": "Schneide an zwei Stellen, klick den Teil dazwischen an und schneide ihn aus. Dunkle Lücken fehlen im gespeicherten Clip, Bild und Ton; der Pfeil in einer Lücke holt sie zurück.",
+  "clips.editor.remove.hint": "Schneide an zwei Stellen, klick den Teil dazwischen an und schneide ihn aus. Sind die Spuren verbunden, fehlt der Teil ganz; sind sie getrennt, trifft der Schnitt nur die angeklickte Spur: Das Bild wird schwarz oder der Ton stumm. Der Pfeil in einer Lücke holt sie zurück.",
   "clips.editor.timeline.video": "Bild",
   "clips.editor.overlay.window": "Sichtbar von {{from}} bis {{to}}",
   "clips.editor.tools.hint": "Wähle ein Werkzeug, um es ins Bild zu setzen, und zieh es dann an die richtige Stelle.",
