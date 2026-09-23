@@ -152,7 +152,7 @@ fn stamp_of(kind: &OverlayKind, width: usize, height: usize, channel: Channel) -
             thickness,
             towards,
         } => {
-            arrow(&mut alpha, width, height, *thickness, *towards);
+            arrow(&mut alpha, width, height, *thickness as f64 * channel.scale() as f64, *towards);
             *colour
         }
         OverlayKind::Text {
@@ -260,30 +260,52 @@ fn text(alpha: &mut [u8], width: usize, height: usize, content: &str, size: u32,
     true
 }
 
-fn arrow(alpha: &mut [u8], columns: usize, rows: usize, thickness: u32, towards: Corner) {
-    let thickness = (thickness.max(1) as usize).min(columns.min(rows));
-    let (width, height) = (columns as f64, rows as f64);
+const ARROW_HEAD_SHARE: f64 = 0.3;
+const ARROW_HEAD_PER_THICKNESS: f64 = 3.0;
+const ARROW_WING_SHARE: f64 = 0.6;
 
+fn arrow(alpha: &mut [u8], columns: usize, rows: usize, thickness: f64, towards: Corner) {
+    let (width, height) = (columns as f64, rows as f64);
     let flip_x = matches!(towards, Corner::TopLeft | Corner::BottomLeft);
     let flip_y = matches!(towards, Corner::TopLeft | Corner::TopRight);
 
-    let half = thickness as f64 / 2.0;
-    let head = (width.min(height) / 3.0).max(thickness as f64);
+    let thickness = thickness.max(1.0).min(width.min(height));
+    let half = thickness / 2.0;
+    let head = (width.min(height) * ARROW_HEAD_SHARE)
+        .max(thickness * ARROW_HEAD_PER_THICKNESS)
+        .min(width.min(height) / 2.0);
+    let wing = head * ARROW_WING_SHARE;
+
+    let (run_x, run_y) = ((width - 1.0 - wing).max(0.0), (height - 1.0 - wing).max(0.0));
+    let length = run_x.hypot(run_y).max(1.0);
+    let (unit_x, unit_y) = (run_x / length, run_y / length);
+    let head = head.min(length);
+    let neck = length - head;
 
     for y in 0..rows {
         for x in 0..columns {
             let along_x = if flip_x { width - 1.0 - x as f64 } else { x as f64 };
             let along_y = if flip_y { height - 1.0 - y as f64 } else { y as f64 };
 
-            let on_shaft = {
-                let wanted = along_x * (height - 1.0).max(1.0) / (width - 1.0).max(1.0);
-                (along_y - wanted).abs() <= half
-            };
-            let in_head = along_x >= width - head && along_y >= height - head;
+            let forward = along_x * unit_x + along_y * unit_y;
+            let aside = (along_x * unit_y - along_y * unit_x).abs();
 
-            if on_shaft || in_head {
-                alpha[y * columns + x] = u8::MAX;
-            }
+            let shaft = if (0.0..=neck).contains(&forward) {
+                (half + 0.5 - aside).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+
+            let back = length - forward;
+            let tip = if (0.0..=head).contains(&back) {
+                (back / head * wing + 0.5 - aside).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+
+            let cover = (shaft.max(tip) * 255.0).round() as u8;
+            let slot = &mut alpha[y * columns + x];
+            *slot = (*slot).max(cover);
         }
     }
 }
@@ -653,48 +675,58 @@ mod tests {
         }
     }
 
-    #[test]
-    fn an_arrow_marks_both_of_its_ends() {
-        let (width, height) = (48, 48);
+    fn arrow_on(towards: Corner, width: usize, height: usize) -> Vec<u8> {
         let mut data = vec![0u8; width * height];
-        let rect = Rect { left: 0, top: 0, width, height };
-
         let mut plane = Plane { data: &mut data, stride: width, width, height, channel: Channel::Luma };
         apply(
             &mut plane,
-            rect,
-            &OverlayKind::Arrow { colour: 0xffffff, thickness: 3, towards: Corner::BottomRight },
+            Rect { left: 0, top: 0, width, height },
+            &OverlayKind::Arrow { colour: 0xffffff, thickness: 3, towards },
         );
+        data
+    }
+
+    fn seen_from(towards: Corner, x: usize, y: usize, width: usize, height: usize) -> usize {
+        let x = if matches!(towards, Corner::TopLeft | Corner::BottomLeft) { width - 1 - x } else { x };
+        let y = if matches!(towards, Corner::TopLeft | Corner::TopRight) { height - 1 - y } else { y };
+        y * width + x
+    }
+
+    #[test]
+    fn an_arrow_marks_both_of_its_ends() {
+        let (width, height) = (48, 48);
+        let data = arrow_on(Corner::BottomRight, width, height);
 
         let white = to_yuv(0xffffff).0;
         assert_eq!(white, 235, "white should be studio white, not full range");
         assert_eq!(data[0], white, "the tail corner is empty");
-        assert_eq!(data[width * (height - 1) + width - 1], white, "the head is empty");
+        assert!(data[37 * width + 37] > 0, "the tip is empty");
+        assert_eq!(data[34 * width + 34], white, "just behind the tip is empty");
         assert_eq!(data[width - 1], 0, "the opposite corner should stay clear");
     }
 
     #[test]
-    fn an_arrow_points_where_it_is_told() {
+    fn an_arrow_has_a_head_wider_than_its_shaft_at_the_corner_it_points_to() {
         let (width, height) = (48, 48);
-        let corners = [
-            (Corner::BottomRight, width * (height - 1) + width - 1),
-            (Corner::BottomLeft, width * (height - 1)),
-            (Corner::TopRight, width - 1),
-            (Corner::TopLeft, 0),
-        ];
+        let white = to_yuv(0xffffff).0;
 
-        for (towards, head) in corners {
-            let mut data = vec![0u8; width * height];
-            let mut plane = Plane { data: &mut data, stride: width, width, height, channel: Channel::Luma };
-            apply(
-                &mut plane,
-                Rect { left: 0, top: 0, width, height },
-                &OverlayKind::Arrow { colour: 0xffffff, thickness: 3, towards },
+        for towards in [Corner::BottomRight, Corner::BottomLeft, Corner::TopRight, Corner::TopLeft] {
+            let data = arrow_on(towards, width, height);
+            assert_eq!(data[seen_from(towards, 0, 0, width, height)], white, "{towards:?} lost its tail");
+            assert_eq!(
+                data[seen_from(towards, 35, 31, width, height)],
+                white,
+                "{towards:?} has no head beside the tip",
             );
             assert_eq!(
-                data[head],
-                to_yuv(0xffffff).0,
-                "{towards:?} did not reach its corner",
+                data[seen_from(towards, 13, 9, width, height)],
+                0,
+                "{towards:?} is as wide at the tail as at the head",
+            );
+            assert!(
+                (0..width).all(|x| data[seen_from(towards, x, height - 1, width, height)] == 0)
+                    && (0..height).all(|y| data[seen_from(towards, width - 1, y, width, height)] == 0),
+                "{towards:?} pushed its head against the edge, where the box cuts it off",
             );
         }
     }
@@ -770,8 +802,8 @@ mod tests {
 
         let (_, blue, _) = to_yuv(0xffffff);
         assert!(
-            data.iter().all(|v| *v == 90 || *v == blue),
-            "the arrow wrote something other than its own colour",
+            data.iter().all(|v| (90.min(blue)..=90.max(blue)).contains(v)),
+            "the arrow wrote something other than a blend towards its own colour",
         );
         assert!(data.iter().any(|v| *v == blue), "the arrow drew nothing");
     }

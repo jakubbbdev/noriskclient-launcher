@@ -1971,9 +1971,24 @@ function OverlayArt({ overlay }: { overlay: ClipOverlay }) {
   const height = Math.max(1, overlay.height * 1080);
 
   if (overlay.kind === "arrow") {
-    const toX = overlay.towards.endsWith("right") ? width : 0;
-    const toY = overlay.towards.startsWith("bottom") ? height : 0;
-    const head = Math.min(width, height) * 0.3;
+    const thickness = Math.min(Math.max(overlay.thickness, 1), width, height);
+    const shorter = Math.min(width, height);
+    const fullHead = Math.min(Math.max(shorter * 0.3, thickness * 3), shorter / 2);
+    const wing = fullHead * 0.6;
+    const runX = Math.max(width - wing, 0);
+    const runY = Math.max(height - wing, 0);
+    const length = Math.max(Math.hypot(runX, runY), 1);
+    const head = Math.min(fullHead, length);
+    const right = overlay.towards.endsWith("right");
+    const bottom = overlay.towards.startsWith("bottom");
+    const x = (along: number) => (right ? along : width - along);
+    const y = (along: number) => (bottom ? along : height - along);
+    const [unitX, unitY] = [runX / length, runY / length];
+    const [baseX, baseY] = [runX - unitX * head, runY - unitY * head];
+    const tip = `${x(runX)},${y(runY)}`;
+    const left = `${x(baseX + unitY * wing)},${y(baseY - unitX * wing)}`;
+    const rightWing = `${x(baseX - unitY * wing)},${y(baseY + unitX * wing)}`;
+    const colour = grey(overlay.colour);
     return (
       <svg
         aria-hidden="true"
@@ -1981,16 +1996,15 @@ function OverlayArt({ overlay }: { overlay: ClipOverlay }) {
         preserveAspectRatio="none"
         className="pointer-events-none absolute inset-0 h-full w-full"
       >
-        <g
-          fill="none"
-          stroke={grey(overlay.colour)}
-          strokeWidth={overlay.thickness}
-          strokeLinecap="round"
-        >
-          <line x1={width - toX} y1={height - toY} x2={toX} y2={toY} />
-          <line x1={toX} y1={toY} x2={toX === 0 ? head : width - head} y2={toY} />
-          <line x1={toX} y1={toY} x2={toX} y2={toY === 0 ? head : height - head} />
-        </g>
+        <line
+          x1={x(0)}
+          y1={y(0)}
+          x2={x(baseX)}
+          y2={y(baseY)}
+          stroke={colour}
+          strokeWidth={thickness}
+        />
+        <polygon points={`${tip} ${left} ${rightWing}`} fill={colour} />
       </svg>
     );
   }
