@@ -186,7 +186,7 @@ impl Flipper {
         }
 
         log::info!(
-            "Flipping {}x{} in a shader because the video processor cannot mirror",
+            "Flipping {}x{} the right way up in a shader",
             size.0,
             size.1
         );
