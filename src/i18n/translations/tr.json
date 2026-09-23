@@ -2695,7 +2695,7 @@
   "clips.editor.remove.restore": "Bu bölümü geri koy",
   "clips.editor.remove.start": "Kesilen bölümün başlangıcı",
   "clips.editor.remove.end": "Kesilen bölümün sonu",
-  "clips.editor.remove.hint": "Kırmızı bölümler kaydedilen klipte yer almaz. Boyutlarını değiştirmek için kenarlarını sürükle veya geri getirmek için çarpıya tıkla.",
+  "clips.editor.remove.hint": "Koyu boşluklar kaydedilen klipte yer almaz, ne görüntü ne ses. Boyutlarını değiştirmek için kenarlarını sürükle; bir bölümü geri getirmek için makasın üzerine gelip tıkla.",
   "clips.editor.timeline.video": "Görüntü",
   "clips.editor.overlay.window": "{{from}} ile {{to}} arasında görünür",
   "clips.editor.tools.hint": "Bir aracı görüntüye bırakmak için seç, sonra olması gereken yere sürükle.",

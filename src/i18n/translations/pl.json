@@ -2705,7 +2705,7 @@
   "clips.editor.remove.restore": "Przywróć ten fragment",
   "clips.editor.remove.start": "Początek wyciętego fragmentu",
   "clips.editor.remove.end": "Koniec wyciętego fragmentu",
-  "clips.editor.remove.hint": "Czerwone fragmenty zostaną pominięte w zapisanym klipie. Przeciągnij ich krawędzie, aby je dopasować, lub kliknij krzyżyk, aby je przywrócić.",
+  "clips.editor.remove.hint": "Ciemne luki zostaną pominięte w zapisanym klipie, zarówno obraz, jak i dźwięk. Przeciągnij ich krawędzie, aby je dopasować; najedź na nożyczki i kliknij, aby przywrócić fragment.",
   "clips.editor.timeline.video": "Obraz",
   "clips.editor.overlay.window": "Widoczne od {{from}} do {{to}}",
   "clips.editor.tools.hint": "Wybierz narzędzie, aby umieścić je na obrazie, a potem przeciągnij je na miejsce.",

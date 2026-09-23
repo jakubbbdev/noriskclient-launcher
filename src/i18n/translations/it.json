@@ -2695,7 +2695,7 @@
   "clips.editor.remove.restore": "Rimetti questo tratto",
   "clips.editor.remove.start": "Inizio del tratto tagliato",
   "clips.editor.remove.end": "Fine del tratto tagliato",
-  "clips.editor.remove.hint": "I tratti rossi non compaiono nella clip salvata. Trascina i bordi per regolarli o clicca sulla croce per rimetterli.",
+  "clips.editor.remove.hint": "I vuoti scuri non compaiono nella clip salvata, né immagine né audio. Trascina i bordi per regolarli; passa sulle forbici e clicca per rimettere un tratto.",
   "clips.editor.timeline.video": "Video",
   "clips.editor.overlay.window": "Visibile da {{from}} a {{to}}",
   "clips.editor.tools.hint": "Scegli uno strumento per posarlo sull'immagine, poi trascinalo dove serve.",

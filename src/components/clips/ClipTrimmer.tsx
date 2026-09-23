@@ -161,7 +161,7 @@ interface GapTrim {
 }
 
 const REMOVE_SECONDS = 1;
-const GAP_COLOUR = "#ef4444";
+const GAP_EDGE = "rgba(255, 255, 255, 0.7)";
 
 interface LaneWindow {
   start: number | null;
@@ -1409,11 +1409,10 @@ export function ClipTrimmer({
             {removed.map((span, index) => (
               <div key={index}>
                 <div
-                  className="absolute inset-y-0"
+                  className="absolute inset-y-0 border-x border-dashed border-white/30 bg-[#08080b]/90"
                   style={{
                     left: `${percent(span.startSeconds)}%`,
                     width: `${percent(span.endSeconds - span.startSeconds)}%`,
-                    backgroundImage: `repeating-linear-gradient(135deg, ${GAP_COLOUR}99 0 6px, rgba(0, 0, 0, 0.6) 6px 12px)`,
                   }}
                 >
                   <button
@@ -1423,9 +1422,10 @@ export function ClipTrimmer({
                     disabled={busy}
                     onPointerDown={(event) => event.stopPropagation()}
                     onClick={() => setRemoved((current) => current.filter((_, at) => at !== index))}
-                    className="pointer-events-auto absolute left-1/2 top-1 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full border border-white/20 bg-black/80 text-white/80 transition-colors hover:text-white"
+                    className="group pointer-events-auto absolute left-1/2 top-0.5 flex h-4 w-4 -translate-x-1/2 items-center justify-center rounded-full text-white/40 transition-colors hover:text-white"
                   >
-                    <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
+                    <Icon icon="solar:scissors-bold" className="h-3 w-3 group-hover:hidden" />
+                    <Icon icon="solar:close-circle-bold" className="hidden h-4 w-4 group-hover:block" />
                   </button>
                 </div>
                 <Handle
@@ -1433,7 +1433,7 @@ export function ClipTrimmer({
                   active={gapTrim?.index === index && gapTrim.edge === "start"}
                   time={formatTime(span.startSeconds)}
                   label={t("clips.editor.remove.start")}
-                  color={GAP_COLOUR}
+                  color={GAP_EDGE}
                   onGrab={() => setGapTrim({ index, edge: "start" })}
                   onNudge={(by) => moveGap(index, "start", span.startSeconds + by)}
                 />
@@ -1442,7 +1442,7 @@ export function ClipTrimmer({
                   active={gapTrim?.index === index && gapTrim.edge === "end"}
                   time={formatTime(span.endSeconds)}
                   label={t("clips.editor.remove.end")}
-                  color={GAP_COLOUR}
+                  color={GAP_EDGE}
                   onGrab={() => setGapTrim({ index, edge: "end" })}
                   onNudge={(by) => moveGap(index, "end", span.endSeconds + by)}
                 />

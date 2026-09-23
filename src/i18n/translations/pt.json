@@ -2695,7 +2695,7 @@
   "clips.editor.remove.restore": "Restaurar este trecho",
   "clips.editor.remove.start": "Início do trecho cortado",
   "clips.editor.remove.end": "Fim do trecho cortado",
-  "clips.editor.remove.hint": "Os trechos vermelhos ficam fora do clipe salvo. Arraste as bordas para ajustá-los ou clique no X para trazê-los de volta.",
+  "clips.editor.remove.hint": "As lacunas escuras ficam fora do clipe salvo, imagem e som. Arraste as bordas para ajustá-las; passe o mouse sobre a tesoura e clique para trazer um trecho de volta.",
   "clips.editor.timeline.video": "Vídeo",
   "clips.editor.overlay.window": "Visível de {{from}} a {{to}}",
   "clips.editor.tools.hint": "Escolhe uma ferramenta para a pousar na imagem e arrasta-a para o sítio certo.",

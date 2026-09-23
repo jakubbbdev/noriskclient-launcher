@@ -2424,7 +2424,7 @@
   "clips.editor.remove.restore": "Diese Stelle wieder einfügen",
   "clips.editor.remove.start": "Anfang der herausgeschnittenen Stelle",
   "clips.editor.remove.end": "Ende der herausgeschnittenen Stelle",
-  "clips.editor.remove.hint": "Rote Stellen fehlen im gespeicherten Clip. Zieh an ihren Rändern, um sie anzupassen, oder klick auf das Kreuz, um sie zurückzuholen.",
+  "clips.editor.remove.hint": "Dunkle Lücken fehlen im gespeicherten Clip, Bild und Ton. Zieh an ihren Rändern, um sie anzupassen; fahr über die Schere und klick, um eine Stelle zurückzuholen.",
   "clips.editor.timeline.video": "Bild",
   "clips.editor.overlay.window": "Sichtbar von {{from}} bis {{to}}",
   "clips.editor.tools.hint": "Wähle ein Werkzeug, um es ins Bild zu setzen, und zieh es dann an die richtige Stelle.",

@@ -2444,7 +2444,7 @@
   "clips.editor.remove.restore": "Put this stretch back",
   "clips.editor.remove.start": "Start of the cut-out stretch",
   "clips.editor.remove.end": "End of the cut-out stretch",
-  "clips.editor.remove.hint": "Red stretches are left out of the saved clip. Drag their edges to resize them, or click the cross to bring them back.",
+  "clips.editor.remove.hint": "Dark gaps are left out of the saved clip, picture and sound alike. Drag their edges to resize them; hover the scissors and click to bring a stretch back.",
   "clips.editor.timeline.video": "Video",
   "clips.editor.overlay.window": "Shown from {{from}} to {{to}}",
   "clips.editor.tools.hint": "Pick a tool to drop it onto the picture, then drag it where it belongs.",
