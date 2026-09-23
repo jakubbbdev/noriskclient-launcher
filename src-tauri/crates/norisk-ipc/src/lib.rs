@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 pub fn pipe_name(session_id: &str) -> String {
     format!(r"\\.\pipe\norisk-capture-{session_id}")
@@ -619,6 +619,18 @@ mod tests {
     }
 
     #[test]
+    fn a_removed_stretch_reads_what_the_editor_sends_and_nothing_else() {
+        let span: Span =
+            serde_json::from_str(r#"{"startSeconds":2.5,"endSeconds":4.0}"#).unwrap();
+        assert_eq!(span, Span { start_seconds: 2.5, end_seconds: 4.0 });
+
+        assert!(
+            serde_json::from_str::<Span>(r#"{"start_seconds":2.5,"end_seconds":4.0}"#).is_err(),
+            "a stretch in the wrong spelling must fail loudly, not arrive empty",
+        );
+    }
+
+    #[test]
     fn a_level_with_a_field_it_does_not_know_is_refused_instead_of_quietly_zeroed() {
         let wrong = serde_json::from_str::<TrackLevel>(
             r#"{"stream":1,"volume":90,"offset_seconds":0.5}"#,
@@ -938,6 +950,15 @@ pub struct ExportVerticalRequest {
     pub video_end_seconds: Option<f64>,
     #[serde(default)]
     pub levels: Vec<TrackLevel>,
+    #[serde(default)]
+    pub removed: Vec<Span>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Span {
+    pub start_seconds: f64,
+    pub end_seconds: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

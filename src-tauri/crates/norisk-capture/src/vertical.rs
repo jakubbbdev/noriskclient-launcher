@@ -67,6 +67,58 @@ fn place(pts: i64, start: i64, end: i64, last: Option<i64>) -> Option<i64> {
     (pts >= start && pts <= end && last.is_none_or(|last| pts > last)).then_some(pts)
 }
 
+struct Gaps(Vec<(i64, i64)>);
+
+impl Gaps {
+    fn new(removed: &[norisk_ipc::Span], origin: i64, start: i64, end: i64) -> Self {
+        let at = |seconds: f64| origin.saturating_add((seconds * TIME_BASE_DEN as f64) as i64);
+        let mut spans: Vec<(i64, i64)> = removed
+            .iter()
+            .filter(|span| span.start_seconds.is_finite() && span.end_seconds.is_finite())
+            .map(|span| (at(span.start_seconds).max(start), at(span.end_seconds).min(end)))
+            .filter(|(from, to)| to > from)
+            .collect();
+        spans.sort_unstable();
+
+        let mut merged: Vec<(i64, i64)> = Vec::with_capacity(spans.len());
+        for (from, to) in spans {
+            match merged.last_mut() {
+                Some(last) if from <= last.1 => last.1 = last.1.max(to),
+                _ => merged.push((from, to)),
+            }
+        }
+        Gaps(merged)
+    }
+
+    fn shift(&self, pts: i64) -> Option<i64> {
+        let mut removed = 0i64;
+        for &(from, to) in &self.0 {
+            if pts < from {
+                break;
+            }
+            if pts < to {
+                return None;
+            }
+            removed += to - from;
+        }
+        Some(pts - removed)
+    }
+
+    fn close(&self, packets: &[Packet]) -> Vec<Packet> {
+        packets
+            .iter()
+            .filter_map(|packet| {
+                let pts = self.shift(packet.pts)?;
+                Some(Packet {
+                    dts: packet.dts - (packet.pts - pts),
+                    pts,
+                    ..packet.clone()
+                })
+            })
+            .collect()
+    }
+}
+
 pub fn to_vertical(
     request: &norisk_ipc::ExportVerticalRequest,
     progress: impl Fn(u32, u32),
@@ -123,6 +175,7 @@ pub fn to_vertical(
     let mut decoder = Decoder::open(&clip.track)?;
     let mut encoder = Encoder::open(width, height, clip.track.fps)?;
 
+    let gaps = Gaps::new(&request.removed, clip.first_pts, want_start, want_end);
     let total = feed.len() as u32;
     let mut packets: Vec<Packet> = Vec::with_capacity(feed.len());
     let mut last = None;
@@ -139,8 +192,12 @@ pub fn to_vertical(
             return Ok(());
         };
         last = Some(pts);
+        let Some(shown) = gaps.shift(pts) else {
+            return Ok(());
+        };
         unsafe { (*frame.0).pts = pts };
         paint(&frame, clip.first_pts, &request.overlays, &mut stamps)?;
+        unsafe { (*frame.0).pts = shown };
         packets.extend(encoder.push(frame, crop)?);
         Ok(())
     };
@@ -161,13 +218,19 @@ pub fn to_vertical(
         bail!("no frames fall inside {start_seconds:.1}s to {end_seconds:.1}s");
     }
 
-    let audio = crate::trim::windowed_audio(
+    let audio: Vec<_> = crate::trim::windowed_audio(
         &clip.audio,
         &request.levels,
         clip.first_pts,
         want_start,
         want_end,
-    );
+    )
+    .into_iter()
+    .map(|source| crate::trim::AudioSource {
+        packets: gaps.close(&source.packets),
+        format: source.format,
+    })
+    .collect();
     let audio = crate::trim::build_audio(&audio, &request.levels)?;
     let audio_packets = || audio.iter().flat_map(|track| track.packets.iter());
 
@@ -908,6 +971,75 @@ mod tests {
         }
         assert!(fed.iter().all(|p| p.dts <= end));
     }
+
+    fn span(start_seconds: f64, end_seconds: f64) -> norisk_ipc::Span {
+        norisk_ipc::Span { start_seconds, end_seconds }
+    }
+
+    #[test]
+    fn a_removed_stretch_is_dropped_and_what_follows_closes_the_gap() {
+        let second = TIME_BASE_DEN as i64;
+        let gaps = Gaps::new(&[span(2.0, 3.0)], 0, 0, 10 * second);
+        let times: Vec<i64> = (0..600).map(|i| i * STEP).collect();
+
+        let out: Vec<i64> = times.iter().filter_map(|&pts| gaps.shift(pts)).collect();
+
+        assert_eq!(out.len(), times.len() - 60, "one second of 60 fps frames should go");
+        assert!(out.windows(2).all(|pair| pair[1] - pair[0] == STEP), "the join left a hole or an overlap");
+        assert_eq!(gaps.shift(2 * second - STEP), Some(2 * second - STEP), "a frame before the cut moved");
+        assert_eq!(gaps.shift(2 * second), None, "the cut's first frame stayed");
+        assert_eq!(gaps.shift(3 * second - STEP), None, "the cut's last frame stayed");
+        assert_eq!(gaps.shift(3 * second), Some(2 * second), "the first frame after the cut did not close the gap");
+    }
+
+    #[test]
+    fn removed_stretches_merge_and_stay_inside_the_kept_clip() {
+        let second = TIME_BASE_DEN as i64;
+        let origin = 5 * second;
+        let gaps = Gaps::new(
+            &[span(6.0, 7.0), span(1.0, 1.5), span(1.25, 2.0), span(-3.0, 0.5), span(9.0, 99.0)],
+            origin,
+            origin,
+            origin + 8 * second,
+        );
+
+        assert_eq!(
+            gaps.0,
+            vec![
+                (origin, origin + second / 2),
+                (origin + second, origin + 2 * second),
+                (origin + 6 * second, origin + 7 * second),
+            ],
+        );
+        assert_eq!(gaps.shift(origin + 3 * second), Some(origin + 3 * second / 2));
+    }
+
+    #[test]
+    fn a_removed_stretch_that_makes_no_sense_removes_nothing() {
+        let gaps = Gaps::new(
+            &[span(f64::NAN, 2.0), span(3.0, f64::INFINITY), span(4.0, 3.0), span(1.0, 1.0)],
+            0,
+            0,
+            10 * TIME_BASE_DEN as i64,
+        );
+
+        assert!(gaps.0.is_empty());
+        assert_eq!(gaps.shift(12_345), Some(12_345));
+    }
+
+    #[test]
+    fn sound_loses_the_same_stretch_as_the_picture() {
+        let second = TIME_BASE_DEN as i64;
+        let gaps = Gaps::new(&[span(1.0, 2.0)], 0, 0, 5 * second);
+        let frame = second / 50;
+        let sound: Vec<Packet> = (0..250).map(|i| packet(i * frame, i * frame, true)).collect();
+
+        let closed = gaps.close(&sound);
+
+        assert_eq!(closed.len(), 200);
+        assert!(closed.iter().all(|p| p.pts == p.dts));
+        assert!(closed.windows(2).all(|pair| pair[1].pts - pair[0].pts == frame));
+    }
 }
 
 #[cfg(test)]
@@ -1114,6 +1246,59 @@ mod render_tests {
             let apart = seconds((audio_first - first).abs());
             println!("sound starts {apart:.3}s away from the picture");
             assert!(apart < 0.1, "sound and picture start {apart:.3}s apart");
+        }
+    }
+
+    #[test]
+    #[ignore = "needs a real clip in NRC_TEST_CLIP"]
+    fn a_stretch_cut_out_of_the_middle_shortens_picture_and_sound_alike() {
+        use crate::encoder::video::TIME_BASE_DEN;
+
+        let source = std::path::PathBuf::from(std::env::var("NRC_TEST_CLIP").unwrap());
+        let destination = std::env::temp_dir().join("nrc-removed-render-test.mp4");
+        let _ = std::fs::remove_file(&destination);
+
+        let original = crate::trim::read(&source).unwrap();
+        let (start, end) = (1.0, (original.duration_seconds() - 1.0).min(11.0));
+        let (gone_from, gone_to) = (start + 2.0, start + 5.0);
+        assert!(end > gone_to + 1.0, "the test clip is too short to cut a stretch out of");
+
+        let request = norisk_ipc::ExportVerticalRequest {
+            source,
+            destination: destination.clone(),
+            shape: norisk_ipc::ClipShape::Original,
+            start_seconds: Some(start),
+            end_seconds: Some(end),
+            removed: vec![norisk_ipc::Span { start_seconds: gone_from, end_seconds: gone_to }],
+            ..Default::default()
+        };
+        super::to_vertical(&request, |_, _| {}).unwrap();
+
+        let written = crate::trim::read(&destination).unwrap();
+        let seconds = |ticks: i64| ticks as f64 / TIME_BASE_DEN as f64;
+        let frame = TIME_BASE_DEN as i64 / original.track.fps.max(1) as i64;
+        let first = written.video.iter().map(|p| p.pts).min().unwrap();
+        let last = written.video.iter().map(|p| p.pts).max().unwrap();
+
+        let video = seconds(last - first + frame);
+        let wanted = end - start - (gone_to - gone_from);
+        println!("video {video:.3}s for {wanted:.3}s kept -> {}", destination.display());
+        assert!(
+            (video - wanted).abs() <= 2.0 * seconds(frame),
+            "the picture runs {video:.3}s, not the {wanted:.3}s that was kept"
+        );
+
+        let mut times: Vec<i64> = written.video.iter().map(|p| p.pts).collect();
+        times.sort_unstable();
+        let widest = times.windows(2).map(|pair| pair[1] - pair[0]).max().unwrap();
+        assert!(seconds(widest) < 0.25, "the picture still has a {:.3}s hole", seconds(widest));
+
+        if let Some(track) = written.audio.first() {
+            let sound_first = track.packets.iter().map(|p| p.pts).min().unwrap();
+            let sound_last = track.packets.iter().map(|p| p.pts).max().unwrap();
+            let sound = seconds(sound_last - sound_first);
+            println!("sound {sound:.3}s");
+            assert!((sound - wanted).abs() < 0.1, "the sound runs {sound:.3}s, not {wanted:.3}s");
         }
     }
 }
