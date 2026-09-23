@@ -315,6 +315,11 @@ pub async fn clip_export_vertical(
     path: std::path::PathBuf,
     shape: Option<norisk_ipc::ClipShape>,
     overlays: Option<Vec<norisk_ipc::ClipOverlay>>,
+    start_seconds: Option<f64>,
+    end_seconds: Option<f64>,
+    video_start_seconds: Option<f64>,
+    video_end_seconds: Option<f64>,
+    levels: Option<Vec<norisk_ipc::TrackLevel>>,
 ) -> Result<std::path::PathBuf, CommandError> {
     let dir = clip_dir().await?;
     let shape = shape.unwrap_or_default();
@@ -327,6 +332,11 @@ pub async fn clip_export_vertical(
             destination: destination.clone(),
             shape,
             overlays: overlays.unwrap_or_default(),
+            start_seconds,
+            end_seconds,
+            video_start_seconds,
+            video_end_seconds,
+            levels: levels.unwrap_or_default(),
         },
     ))?;
 
