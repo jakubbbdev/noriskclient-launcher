@@ -155,14 +155,6 @@ interface LaneTrim {
   edge: "start" | "end";
 }
 
-interface GapTrim {
-  index: number;
-  edge: "start" | "end";
-}
-
-const REMOVE_SECONDS = 1;
-const GAP_EDGE = "rgba(255, 255, 255, 0.7)";
-
 interface LaneWindow {
   start: number | null;
   end: number | null;
@@ -232,7 +224,7 @@ export function ClipTrimmer({
   const [laneDrag, setLaneDrag] = useState<LaneDrag | null>(null);
   const [laneTrim, setLaneTrim] = useState<LaneTrim | null>(null);
   const [removed, setRemoved] = useState<Span[]>([]);
-  const [gapTrim, setGapTrim] = useState<GapTrim | null>(null);
+  const [splits, setSplits] = useState<number[]>([]);
   const [rendering, setRendering] = useState<RenderProgress | null>(null);
   const renderingRef = useRef(false);
   const leave = useRef(onCancel);
@@ -255,12 +247,25 @@ export function ClipTrimmer({
   const [windows, setWindows] = useState<Record<number, LaneWindow>>({});
 
   const doc = useMemo(
-    () => ({ overlays, start, end, picture, offsets, windows, volumes, shape, separate, removed }),
-    [end, offsets, overlays, picture, removed, separate, shape, start, volumes, windows],
+    () => ({
+      overlays,
+      start,
+      end,
+      picture,
+      offsets,
+      windows,
+      volumes,
+      shape,
+      separate,
+      removed,
+      splits,
+    }),
+    [end, offsets, overlays, picture, removed, separate, shape, splits, start, volumes, windows],
   );
   const restore = useCallback((saved: typeof doc) => {
     setOverlays(saved.overlays);
     setRemoved(saved.removed);
+    setSplits(saved.splits);
     setStart(saved.start);
     setEnd(saved.end);
     setPicture(saved.picture);
@@ -572,58 +577,41 @@ export function ClipTrimmer({
     };
   }, [laneTrim, secondsAt, trimTrack]);
 
-  const fresh = useMemo((): Span | null => {
-    const at = clamp(playhead, shot.from, shot.to);
-    if (removed.some((span) => at >= span.startSeconds && at < span.endSeconds)) return null;
-    const next = Math.min(
-      shot.to,
-      ...removed.filter((span) => span.startSeconds > at).map((span) => span.startSeconds),
-    );
-    const to = Math.min(at + REMOVE_SECONDS, next);
-    return to - at < NUDGE ? null : { startSeconds: tidy(at), endSeconds: tidy(to) };
-  }, [playhead, removed, shot.from, shot.to]);
-
-  const removeHere = useCallback(() => {
-    if (!fresh) return;
-    setRemoved((current) =>
-      [...current, fresh].sort((a, b) => a.startSeconds - b.startSeconds),
-    );
-  }, [fresh]);
-
-  const moveGap = useCallback(
-    (index: number, edge: "start" | "end", seconds: number) => {
-      const span = removed[index];
-      if (!span) return;
-      const next =
-        edge === "start"
-          ? clamp(seconds, removed[index - 1]?.endSeconds ?? 0, span.endSeconds - NUDGE)
-          : clamp(seconds, span.startSeconds + NUDGE, removed[index + 1]?.startSeconds ?? duration);
-      setRemoved((current) =>
-        current.map((entry, at) =>
-          at !== index
-            ? entry
-            : edge === "start"
-              ? { ...entry, startSeconds: tidy(next) }
-              : { ...entry, endSeconds: tidy(next) },
-        ),
-      );
-      seek(next);
-    },
-    [duration, removed, seek],
+  const inside = useCallback(
+    (at: number) => removed.some((span) => at >= span.startSeconds && at < span.endSeconds),
+    [removed],
   );
 
-  useEffect(() => {
-    if (!gapTrim) return;
-    const move = (event: PointerEvent) =>
-      moveGap(gapTrim.index, gapTrim.edge, secondsAt(event.clientX));
-    const up = () => setGapTrim(null);
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-  }, [gapTrim, moveGap, secondsAt]);
+  const kept = Math.max(0, shot.to - shot.from - hollowed(removed, shot.from, shot.to));
+
+  const canSplit =
+    playhead > shot.from + NUDGE &&
+    playhead < shot.to - NUDGE &&
+    !inside(playhead) &&
+    splits.every((at) => Math.abs(at - playhead) >= NUDGE);
+
+  const split = useCallback(() => {
+    if (!canSplit) return;
+    setSplits((current) => [...current, tidy(playhead)].sort((a, b) => a - b));
+  }, [canSplit, playhead]);
+
+  const part = useMemo((): Span | null => {
+    if (splits.length === 0 || playing || inside(playhead)) return null;
+    const edges = [shot.from, ...splits.filter((at) => at > shot.from && at < shot.to), shot.to];
+    for (let i = 1; i < edges.length; i++) {
+      if (playhead >= edges[i - 1] && playhead < edges[i]) {
+        return { startSeconds: edges[i - 1], endSeconds: edges[i] };
+      }
+    }
+    return null;
+  }, [inside, playhead, playing, shot.from, shot.to, splits]);
+
+  const cuttable = part !== null && kept - (part.endSeconds - part.startSeconds) >= MIN_LENGTH;
+
+  const cutPart = useCallback(() => {
+    if (!part || !cuttable) return;
+    setRemoved((current) => merged([...current, part]));
+  }, [cuttable, part]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -646,8 +634,6 @@ export function ClipTrimmer({
       cancelAnimationFrame(frame);
     };
   }, [removed]);
-
-  const kept = Math.max(0, shot.to - shot.from - hollowed(removed, shot.from, shot.to));
 
   useEffect(() => {
     let stop: (() => void) | undefined;
@@ -1243,10 +1229,17 @@ export function ClipTrimmer({
         />
         <ClipIconButton
           icon="solar:scissors-square-bold"
+          label={t("clips.editor.transport.split")}
+          tooltipPosition="top"
+          onClick={split}
+          disabled={busy || !canSplit}
+        />
+        <ClipIconButton
+          icon="solar:trash-bin-trash-bold"
           label={t("clips.editor.transport.remove")}
           tooltipPosition="top"
-          onClick={removeHere}
-          disabled={busy || !fresh}
+          onClick={cutPart}
+          disabled={busy || !cuttable}
         />
 
         <span className="ml-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-1 font-minecraft text-sm tabular-nums text-white/90">
@@ -1406,46 +1399,57 @@ export function ClipTrimmer({
 
           <div className="pointer-events-none absolute inset-y-0 left-44 right-0">
             {!separate && clipMasks(start, end)}
+            {part && (
+              <div
+                className="absolute inset-y-0 rounded-md border-2"
+                style={{
+                  left: `${percent(part.startSeconds)}%`,
+                  width: `${percent(part.endSeconds - part.startSeconds)}%`,
+                  borderColor: accentColor.value,
+                  backgroundColor: `${accentColor.value}1f`,
+                }}
+              />
+            )}
             {removed.map((span, index) => (
-              <div key={index}>
-                <div
-                  className="absolute inset-y-0 border-x border-dashed border-white/30 bg-[#08080b]/90"
-                  style={{
-                    left: `${percent(span.startSeconds)}%`,
-                    width: `${percent(span.endSeconds - span.startSeconds)}%`,
-                  }}
+              <div
+                key={index}
+                className="absolute inset-y-0 border-x border-dashed border-white/30 bg-[#08080b]/90"
+                style={{
+                  left: `${percent(span.startSeconds)}%`,
+                  width: `${percent(span.endSeconds - span.startSeconds)}%`,
+                }}
+              >
+                <button
+                  type="button"
+                  aria-label={t("clips.editor.remove.restore")}
+                  title={t("clips.editor.remove.restore")}
+                  disabled={busy}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => setRemoved((current) => current.filter((_, at) => at !== index))}
+                  className="pointer-events-auto absolute left-1/2 top-0.5 flex h-4 w-4 -translate-x-1/2 items-center justify-center rounded-full text-white/40 transition-colors hover:text-white"
                 >
-                  <button
-                    type="button"
-                    aria-label={t("clips.editor.remove.restore")}
-                    title={t("clips.editor.remove.restore")}
-                    disabled={busy}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={() => setRemoved((current) => current.filter((_, at) => at !== index))}
-                    className="group pointer-events-auto absolute left-1/2 top-0.5 flex h-4 w-4 -translate-x-1/2 items-center justify-center rounded-full text-white/40 transition-colors hover:text-white"
-                  >
-                    <Icon icon="solar:scissors-bold" className="h-3 w-3 group-hover:hidden" />
-                    <Icon icon="solar:close-circle-bold" className="hidden h-4 w-4 group-hover:block" />
-                  </button>
-                </div>
-                <Handle
-                  left={percent(span.startSeconds)}
-                  active={gapTrim?.index === index && gapTrim.edge === "start"}
-                  time={formatTime(span.startSeconds)}
-                  label={t("clips.editor.remove.start")}
-                  color={GAP_EDGE}
-                  onGrab={() => setGapTrim({ index, edge: "start" })}
-                  onNudge={(by) => moveGap(index, "start", span.startSeconds + by)}
-                />
-                <Handle
-                  left={percent(span.endSeconds)}
-                  active={gapTrim?.index === index && gapTrim.edge === "end"}
-                  time={formatTime(span.endSeconds)}
-                  label={t("clips.editor.remove.end")}
-                  color={GAP_EDGE}
-                  onGrab={() => setGapTrim({ index, edge: "end" })}
-                  onNudge={(by) => moveGap(index, "end", span.endSeconds + by)}
-                />
+                  <Icon icon="solar:restart-bold" className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+            {splits.map((at) => (
+              <div
+                key={at}
+                className="absolute inset-y-0 w-0.5 -translate-x-1/2 bg-white/70"
+                style={{ left: `${percent(at)}%` }}
+              >
+                <button
+                  type="button"
+                  aria-label={t("clips.editor.split.remove")}
+                  title={t("clips.editor.split.remove")}
+                  disabled={busy}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => setSplits((current) => current.filter((other) => other !== at))}
+                  className="group pointer-events-auto absolute left-1/2 top-0 flex h-4 w-4 -translate-x-1/2 items-center justify-center rounded-full border border-white/30 bg-black/80 text-white/70 transition-colors hover:text-white"
+                >
+                  <Icon icon="solar:scissors-bold" className="h-2.5 w-2.5 group-hover:hidden" />
+                  <Icon icon="solar:close-circle-bold" className="hidden h-3.5 w-3.5 group-hover:block" />
+                </button>
               </div>
             ))}
             <div
@@ -1458,7 +1462,7 @@ export function ClipTrimmer({
         </div>
 
         <p className="mt-2.5 min-h-[1.25rem] font-minecraft text-xs text-white/50">
-          {removed.length > 0
+          {removed.length > 0 || splits.length > 0
             ? t("clips.editor.remove.hint")
             : overlays.length > 0
               ? t("clips.editor.overlay.hint")
@@ -2254,6 +2258,19 @@ function overlayTint(overlay: ClipOverlay, fallback: string): string {
 
 function clamp(value: number, low: number, high: number): number {
   return Math.max(low, Math.min(value, Math.max(low, high)));
+}
+
+function merged(spans: Span[]): Span[] {
+  const out: Span[] = [];
+  for (const span of [...spans].sort((a, b) => a.startSeconds - b.startSeconds)) {
+    const last = out[out.length - 1];
+    if (last && span.startSeconds <= last.endSeconds) {
+      last.endSeconds = Math.max(last.endSeconds, span.endSeconds);
+    } else {
+      out.push({ ...span });
+    }
+  }
+  return out;
 }
 
 function hollowed(spans: Span[], from: number, to: number): number {
