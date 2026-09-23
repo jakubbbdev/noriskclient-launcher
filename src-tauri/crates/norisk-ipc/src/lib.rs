@@ -892,7 +892,7 @@ impl ClipShape {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct ExportVerticalRequest {
     pub source: PathBuf,
     pub destination: PathBuf,
@@ -900,6 +900,16 @@ pub struct ExportVerticalRequest {
     pub shape: ClipShape,
     #[serde(default)]
     pub overlays: Vec<ClipOverlay>,
+    #[serde(default)]
+    pub start_seconds: Option<f64>,
+    #[serde(default)]
+    pub end_seconds: Option<f64>,
+    #[serde(default)]
+    pub video_start_seconds: Option<f64>,
+    #[serde(default)]
+    pub video_end_seconds: Option<f64>,
+    #[serde(default)]
+    pub levels: Vec<TrackLevel>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
