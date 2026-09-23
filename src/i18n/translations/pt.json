@@ -2636,6 +2636,8 @@
   "overlay.clip.error.NotRecording.hint": "O launcher está se reconectando. O jogo está aberto?",
   "overlay.clip.error.Paused": "A gravação está pausada",
   "overlay.clip.error.Paused.hint": "Pressiona novamente a tecla de pausa para voltar a gravar.",
+  "overlay.clip.error.Protocol": "O launcher e o motor de clipes não combinam",
+  "overlay.clip.error.Protocol.hint": "Reinicie o launcher para que ambos tenham a mesma versão.",
   "overlay.clip.error.WindowNotFound": "Nenhum jogo encontrado",
   "overlay.clip.error.WindowNotFound.hint": "A gravação começa assim que o Minecraft estiver em execução.",
   "overlay.clip.error.EncoderUnavailable": "Nenhum codificador disponível",

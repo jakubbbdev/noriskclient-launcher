@@ -2651,6 +2651,8 @@
   "overlay.clip.error.NotRecording.hint": "लॉन्चर दोबारा जुड़ रहा है। क्या गेम चल रहा है?",
   "overlay.clip.error.Paused": "रिकॉर्डिंग रुकी हुई है",
   "overlay.clip.error.Paused.hint": "फिर से रिकॉर्ड करने के लिए पॉज़ कुंजी दोबारा दबाएँ।",
+  "overlay.clip.error.Protocol": "लॉन्चर और क्लिप इंजन मेल नहीं खाते",
+  "overlay.clip.error.Protocol.hint": "लॉन्चर को फिर से शुरू करें ताकि दोनों एक ही संस्करण पर हों।",
   "overlay.clip.error.WindowNotFound": "कोई गेम नहीं मिला",
   "overlay.clip.error.WindowNotFound.hint": "Minecraft चलने पर रिकॉर्डिंग शुरू हो जाती है।",
   "overlay.clip.error.EncoderUnavailable": "कोई एनकोडर उपलब्ध नहीं",

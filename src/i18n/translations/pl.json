@@ -2646,6 +2646,8 @@
   "overlay.clip.error.NotRecording.hint": "Launcher próbuje połączyć się ponownie. Czy gra działa?",
   "overlay.clip.error.Paused": "Nagrywanie jest wstrzymane",
   "overlay.clip.error.Paused.hint": "Naciśnij ponownie klawisz pauzy, aby znowu nagrywać.",
+  "overlay.clip.error.Protocol": "Launcher i silnik klipów do siebie nie pasują",
+  "overlay.clip.error.Protocol.hint": "Uruchom launcher ponownie, aby oba miały tę samą wersję.",
   "overlay.clip.error.WindowNotFound": "Nie znaleziono gry",
   "overlay.clip.error.WindowNotFound.hint": "Nagrywanie zaczyna się, gdy Minecraft jest uruchomiony.",
   "overlay.clip.error.EncoderUnavailable": "Brak dostępnego enkodera",

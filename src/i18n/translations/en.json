@@ -2385,6 +2385,8 @@
   "overlay.clip.error.NotRecording.hint": "The launcher is attaching again. Is the game running?",
   "overlay.clip.error.Paused": "Recording is paused",
   "overlay.clip.error.Paused.hint": "Press the pause hotkey again to start recording.",
+  "overlay.clip.error.Protocol": "The launcher and the clip engine do not match",
+  "overlay.clip.error.Protocol.hint": "Restart the launcher so both are the same version.",
   "overlay.clip.error.WindowNotFound": "No game found",
   "overlay.clip.error.WindowNotFound.hint": "Recording starts once Minecraft is running.",
   "overlay.clip.error.EncoderUnavailable": "No encoder available",

@@ -2636,6 +2636,8 @@
   "overlay.clip.error.NotRecording.hint": "Launcher yeniden bağlanıyor. Oyun açık mı?",
   "overlay.clip.error.Paused": "Kayıt duraklatıldı",
   "overlay.clip.error.Paused.hint": "Yeniden kaydetmek için duraklatma tuşuna tekrar bas.",
+  "overlay.clip.error.Protocol": "Başlatıcı ile klip motoru uyuşmuyor",
+  "overlay.clip.error.Protocol.hint": "İkisinin de aynı sürümde olması için başlatıcıyı yeniden başlat.",
   "overlay.clip.error.WindowNotFound": "Oyun bulunamadı",
   "overlay.clip.error.WindowNotFound.hint": "Minecraft çalışmaya başlayınca kayıt başlar.",
   "overlay.clip.error.EncoderUnavailable": "Kullanılabilir encoder yok",

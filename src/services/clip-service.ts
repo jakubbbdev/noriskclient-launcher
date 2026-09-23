@@ -229,13 +229,7 @@ function cutArgs(cut: ClipCut) {
     endSeconds: cut.endSeconds,
     videoStartSeconds: cut.videoStartSeconds ?? null,
     videoEndSeconds: cut.videoEndSeconds ?? null,
-    levels: cut.levels?.map((level) => ({
-      stream: level.stream,
-      volume: level.volume,
-      offset_seconds: level.offsetSeconds,
-      start_seconds: level.startSeconds,
-      end_seconds: level.endSeconds,
-    })),
+    levels: cut.levels,
   };
 }
 

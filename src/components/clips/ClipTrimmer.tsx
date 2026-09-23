@@ -557,7 +557,8 @@ export function ClipTrimmer({
           leave.current();
         }),
         listen<CaptureError>("clip_error", (event) => {
-          if (!renderingRef.current || event.payload.code !== "clip_write") return;
+          if (!renderingRef.current) return;
+          if (event.payload.code !== "clip_write" && event.payload.code !== "protocol") return;
           renderingRef.current = false;
           setRendering(null);
           toast.error(t("clips.trim.failed"));

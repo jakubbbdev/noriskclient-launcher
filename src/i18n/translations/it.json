@@ -2636,6 +2636,8 @@
   "overlay.clip.error.NotRecording.hint": "Il launcher si sta riagganciando. Il gioco è avviato?",
   "overlay.clip.error.Paused": "La registrazione è in pausa",
   "overlay.clip.error.Paused.hint": "Premi di nuovo il tasto di pausa per riprendere a registrare.",
+  "overlay.clip.error.Protocol": "Il launcher e il motore delle clip non corrispondono",
+  "overlay.clip.error.Protocol.hint": "Riavvia il launcher perché entrambi abbiano la stessa versione.",
   "overlay.clip.error.WindowNotFound": "Nessun gioco trovato",
   "overlay.clip.error.WindowNotFound.hint": "La registrazione inizia non appena Minecraft è avviato.",
   "overlay.clip.error.EncoderUnavailable": "Nessun encoder disponibile",

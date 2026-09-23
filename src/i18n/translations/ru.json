@@ -2648,6 +2648,8 @@
   "overlay.clip.error.NotRecording.hint": "Лаунчер подключается заново. Игра запущена?",
   "overlay.clip.error.Paused": "Запись приостановлена",
   "overlay.clip.error.Paused.hint": "Нажмите клавишу паузы снова, чтобы продолжить запись.",
+  "overlay.clip.error.Protocol": "Лаунчер и движок клипов не совпадают",
+  "overlay.clip.error.Protocol.hint": "Перезапусти лаунчер, чтобы у обоих была одна версия.",
   "overlay.clip.error.WindowNotFound": "Игра не найдена",
   "overlay.clip.error.WindowNotFound.hint": "Запись начнётся, как только запустится Minecraft.",
   "overlay.clip.error.EncoderUnavailable": "Кодировщик недоступен",

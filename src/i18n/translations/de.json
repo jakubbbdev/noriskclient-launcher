@@ -2365,6 +2365,8 @@
   "overlay.clip.error.NotRecording.hint": "Der Launcher hängt sich neu an. Läuft das Spiel?",
   "overlay.clip.error.Paused": "Aufnahme ist pausiert",
   "overlay.clip.error.Paused.hint": "Drücke die Pause-Taste erneut, um wieder aufzunehmen.",
+  "overlay.clip.error.Protocol": "Launcher und Clip-Engine passen nicht zusammen",
+  "overlay.clip.error.Protocol.hint": "Starte den Launcher neu, damit beide dieselbe Version haben.",
   "overlay.clip.error.WindowNotFound": "Kein Spiel gefunden",
   "overlay.clip.error.WindowNotFound.hint": "Aufgenommen wird erst, wenn Minecraft läuft.",
   "overlay.clip.error.EncoderUnavailable": "Kein Encoder verfügbar",
