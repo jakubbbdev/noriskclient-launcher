@@ -148,6 +148,7 @@ export async function exportVertical(
     shape,
     overlays,
     ...(cut ? cutArgs(cut) : {}),
+    removed: cut?.removed ?? [],
   });
 }
 
@@ -215,12 +216,18 @@ export interface TrackLevel {
   endSeconds: number | null;
 }
 
+export interface Span {
+  startSeconds: number;
+  endSeconds: number;
+}
+
 export interface ClipCut {
   startSeconds: number;
   endSeconds: number;
   levels?: TrackLevel[];
   videoStartSeconds?: number | null;
   videoEndSeconds?: number | null;
+  removed?: Span[];
 }
 
 function cutArgs(cut: ClipCut) {

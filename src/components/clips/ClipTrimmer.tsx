@@ -18,6 +18,7 @@ import {
   type ClipShape,
   type ExportProgress,
   type ExportedClip,
+  type Span,
   type TrackLevel,
 } from "../../services/clip-service";
 import { TrackLevelControl, Waveform, trackName } from "./ClipTimeline";
@@ -154,6 +155,14 @@ interface LaneTrim {
   edge: "start" | "end";
 }
 
+interface GapTrim {
+  index: number;
+  edge: "start" | "end";
+}
+
+const REMOVE_SECONDS = 1;
+const GAP_COLOUR = "#ef4444";
+
 interface LaneWindow {
   start: number | null;
   end: number | null;
@@ -222,6 +231,8 @@ export function ClipTrimmer({
   const [barDrag, setBarDrag] = useState<BarDrag | null>(null);
   const [laneDrag, setLaneDrag] = useState<LaneDrag | null>(null);
   const [laneTrim, setLaneTrim] = useState<LaneTrim | null>(null);
+  const [removed, setRemoved] = useState<Span[]>([]);
+  const [gapTrim, setGapTrim] = useState<GapTrim | null>(null);
   const [rendering, setRendering] = useState<RenderProgress | null>(null);
   const renderingRef = useRef(false);
   const leave = useRef(onCancel);
@@ -244,11 +255,12 @@ export function ClipTrimmer({
   const [windows, setWindows] = useState<Record<number, LaneWindow>>({});
 
   const doc = useMemo(
-    () => ({ overlays, start, end, picture, offsets, windows, volumes, shape, separate }),
-    [end, offsets, overlays, picture, separate, shape, start, volumes, windows],
+    () => ({ overlays, start, end, picture, offsets, windows, volumes, shape, separate, removed }),
+    [end, offsets, overlays, picture, removed, separate, shape, start, volumes, windows],
   );
   const restore = useCallback((saved: typeof doc) => {
     setOverlays(saved.overlays);
+    setRemoved(saved.removed);
     setStart(saved.start);
     setEnd(saved.end);
     setPicture(saved.picture);
@@ -326,7 +338,6 @@ export function ClipTrimmer({
 
   const filmstrip = useFilmstrip(src, duration);
 
-  const kept = Math.max(0, end - start);
   const percent = useCallback(
     (seconds: number) => (duration > 0 ? (seconds / duration) * 100 : 0),
     [duration],
@@ -561,6 +572,83 @@ export function ClipTrimmer({
     };
   }, [laneTrim, secondsAt, trimTrack]);
 
+  const fresh = useMemo((): Span | null => {
+    const at = clamp(playhead, shot.from, shot.to);
+    if (removed.some((span) => at >= span.startSeconds && at < span.endSeconds)) return null;
+    const next = Math.min(
+      shot.to,
+      ...removed.filter((span) => span.startSeconds > at).map((span) => span.startSeconds),
+    );
+    const to = Math.min(at + REMOVE_SECONDS, next);
+    return to - at < NUDGE ? null : { startSeconds: tidy(at), endSeconds: tidy(to) };
+  }, [playhead, removed, shot.from, shot.to]);
+
+  const removeHere = useCallback(() => {
+    if (!fresh) return;
+    setRemoved((current) =>
+      [...current, fresh].sort((a, b) => a.startSeconds - b.startSeconds),
+    );
+  }, [fresh]);
+
+  const moveGap = useCallback(
+    (index: number, edge: "start" | "end", seconds: number) => {
+      const span = removed[index];
+      if (!span) return;
+      const next =
+        edge === "start"
+          ? clamp(seconds, removed[index - 1]?.endSeconds ?? 0, span.endSeconds - NUDGE)
+          : clamp(seconds, span.startSeconds + NUDGE, removed[index + 1]?.startSeconds ?? duration);
+      setRemoved((current) =>
+        current.map((entry, at) =>
+          at !== index
+            ? entry
+            : edge === "start"
+              ? { ...entry, startSeconds: tidy(next) }
+              : { ...entry, endSeconds: tidy(next) },
+        ),
+      );
+      seek(next);
+    },
+    [duration, removed, seek],
+  );
+
+  useEffect(() => {
+    if (!gapTrim) return;
+    const move = (event: PointerEvent) =>
+      moveGap(gapTrim.index, gapTrim.edge, secondsAt(event.clientX));
+    const up = () => setGapTrim(null);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  }, [gapTrim, moveGap, secondsAt]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || removed.length === 0) return;
+    let frame = 0;
+    const hop = () => {
+      const now = video.currentTime;
+      const hole = removed.find((span) => now >= span.startSeconds && now < span.endSeconds);
+      if (hole) video.currentTime = hole.endSeconds;
+      if (!video.paused) frame = requestAnimationFrame(hop);
+    };
+    const onPlay = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(hop);
+    };
+    video.addEventListener("play", onPlay);
+    if (!video.paused) onPlay();
+    return () => {
+      video.removeEventListener("play", onPlay);
+      cancelAnimationFrame(frame);
+    };
+  }, [removed]);
+
+  const kept = Math.max(0, shot.to - shot.from - hollowed(removed, shot.from, shot.to));
+
   useEffect(() => {
     let stop: (() => void) | undefined;
     let alive = true;
@@ -601,7 +689,7 @@ export function ClipTrimmer({
   }, [path, t]);
 
   const save = useCallback(async () => {
-    if (overlays.length === 0 && shape === "original") {
+    if (overlays.length === 0 && shape === "original" && removed.length === 0) {
       onSave(start, end, levels, shot.start, shot.end);
       return;
     }
@@ -614,6 +702,7 @@ export function ClipTrimmer({
         levels,
         videoStartSeconds: shot.start,
         videoEndSeconds: shot.end,
+        removed,
       });
     } catch (e) {
       console.error("Could not render the clip", e);
@@ -621,7 +710,7 @@ export function ClipTrimmer({
       setRendering(null);
       toast.error(parseErrorMessage(e));
     }
-  }, [end, levels, onSave, overlays, path, shape, shot.end, shot.start, start]);
+  }, [end, levels, onSave, overlays, path, removed, shape, shot.end, shot.start, start]);
 
   const guide = useMemo(() => {
     const target = SHAPES.find((entry) => entry.choice === shape)?.ratio;
@@ -1152,6 +1241,13 @@ export function ClipTrimmer({
           onClick={history.redo}
           disabled={!history.canRedo}
         />
+        <ClipIconButton
+          icon="solar:scissors-square-bold"
+          label={t("clips.editor.transport.remove")}
+          tooltipPosition="top"
+          onClick={removeHere}
+          disabled={busy || !fresh}
+        />
 
         <span className="ml-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-1 font-minecraft text-sm tabular-nums text-white/90">
           {formatTime(playhead)}
@@ -1162,7 +1258,7 @@ export function ClipTrimmer({
           <Readout label={t("clips.trim.from")} value={formatTime(shot.from)} />
           <Readout
             label={t("clips.trim.kept_label")}
-            value={`${Math.max(0, shot.to - shot.from).toFixed(1)} s`}
+            value={`${kept.toFixed(1)} s`}
             strong
           />
           <Readout label={t("clips.trim.to")} value={formatTime(shot.to)} />
@@ -1310,6 +1406,48 @@ export function ClipTrimmer({
 
           <div className="pointer-events-none absolute inset-y-0 left-44 right-0">
             {!separate && clipMasks(start, end)}
+            {removed.map((span, index) => (
+              <div key={index}>
+                <div
+                  className="absolute inset-y-0"
+                  style={{
+                    left: `${percent(span.startSeconds)}%`,
+                    width: `${percent(span.endSeconds - span.startSeconds)}%`,
+                    backgroundImage: `repeating-linear-gradient(135deg, ${GAP_COLOUR}99 0 6px, rgba(0, 0, 0, 0.6) 6px 12px)`,
+                  }}
+                >
+                  <button
+                    type="button"
+                    aria-label={t("clips.editor.remove.restore")}
+                    title={t("clips.editor.remove.restore")}
+                    disabled={busy}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={() => setRemoved((current) => current.filter((_, at) => at !== index))}
+                    className="pointer-events-auto absolute left-1/2 top-1 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full border border-white/20 bg-black/80 text-white/80 transition-colors hover:text-white"
+                  >
+                    <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
+                  </button>
+                </div>
+                <Handle
+                  left={percent(span.startSeconds)}
+                  active={gapTrim?.index === index && gapTrim.edge === "start"}
+                  time={formatTime(span.startSeconds)}
+                  label={t("clips.editor.remove.start")}
+                  color={GAP_COLOUR}
+                  onGrab={() => setGapTrim({ index, edge: "start" })}
+                  onNudge={(by) => moveGap(index, "start", span.startSeconds + by)}
+                />
+                <Handle
+                  left={percent(span.endSeconds)}
+                  active={gapTrim?.index === index && gapTrim.edge === "end"}
+                  time={formatTime(span.endSeconds)}
+                  label={t("clips.editor.remove.end")}
+                  color={GAP_COLOUR}
+                  onGrab={() => setGapTrim({ index, edge: "end" })}
+                  onNudge={(by) => moveGap(index, "end", span.endSeconds + by)}
+                />
+              </div>
+            ))}
             <div
               className="absolute inset-y-0 w-px bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]"
               style={{ left: `${percent(playhead)}%` }}
@@ -1320,7 +1458,11 @@ export function ClipTrimmer({
         </div>
 
         <p className="mt-2.5 min-h-[1.25rem] font-minecraft text-xs text-white/50">
-          {overlays.length > 0 ? t("clips.editor.overlay.hint") : t("clips.trim.hint")}
+          {removed.length > 0
+            ? t("clips.editor.remove.hint")
+            : overlays.length > 0
+              ? t("clips.editor.overlay.hint")
+              : t("clips.trim.hint")}
         </p>
       </div>
       </div>
@@ -2112,6 +2254,14 @@ function overlayTint(overlay: ClipOverlay, fallback: string): string {
 
 function clamp(value: number, low: number, high: number): number {
   return Math.max(low, Math.min(value, Math.max(low, high)));
+}
+
+function hollowed(spans: Span[], from: number, to: number): number {
+  return spans.reduce(
+    (sum, span) =>
+      sum + Math.max(0, Math.min(span.endSeconds, to) - Math.max(span.startSeconds, from)),
+    0,
+  );
 }
 
 function tidy(value: number): number {
