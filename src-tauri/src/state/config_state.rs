@@ -1,6 +1,7 @@
 use crate::config::{ProjectDirsExt, LAUNCHER_DIRECTORY, update_custom_game_dir};
 use crate::error::Result;
 use crate::state::post_init::PostInitializationHandler;
+#[cfg(desktop)]
 use crate::state::profile_state::MemorySettings;
 use async_trait::async_trait;
 use log::{debug, error, info, trace, warn};
@@ -389,6 +390,7 @@ pub struct LauncherConfig {
     pub hooks: Hooks,
     #[serde(default = "default_hide_on_process_start")]
     pub hide_on_process_start: bool,
+    #[cfg(desktop)]
     #[serde(default = "default_global_memory_settings")]
     pub global_memory_settings: MemorySettings,
     #[serde(default)]
@@ -464,6 +466,7 @@ fn default_hide_on_process_start() -> bool {
     false
 }
 
+#[cfg(desktop)]
 fn default_global_memory_settings() -> MemorySettings {
     const PREVIOUS_DEFAULT_MB: u32 = 3072;
     MemorySettings {
@@ -503,6 +506,7 @@ impl Default for LauncherConfig {
             last_played_profile: None,
             hooks: Hooks::default(),
             hide_on_process_start: default_hide_on_process_start(),
+            #[cfg(desktop)]
             global_memory_settings: default_global_memory_settings(),
             global_custom_jvm_args: None,
             custom_game_directory: None,
@@ -813,6 +817,7 @@ impl ConfigManager {
                         current.hide_on_process_start, new_config.hide_on_process_start
                     );
                 }
+                #[cfg(desktop)]
                 if current.global_memory_settings.min != new_config.global_memory_settings.min
                     || current.global_memory_settings.max != new_config.global_memory_settings.max {
                     info!(
@@ -860,6 +865,7 @@ impl ConfigManager {
                     last_played_profile: new_config.last_played_profile,
                     hooks: new_config.hooks,
                     hide_on_process_start: new_config.hide_on_process_start,
+                    #[cfg(desktop)]
                     global_memory_settings: new_config.global_memory_settings,
                     global_custom_jvm_args: new_config.global_custom_jvm_args.clone(),
                     custom_game_directory: new_config.custom_game_directory.clone(),

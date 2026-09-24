@@ -1,5 +1,7 @@
 use crate::error::{AppError, CommandError};
-use crate::minecraft::api::norisk_api::{AdventCalendarDay, CrashlogDto, NoRiskApi, ReferralInfo, UniquePlayersResponse, UserNotification};
+#[cfg(desktop)]
+use crate::minecraft::api::norisk_api::CrashlogDto;
+use crate::minecraft::api::norisk_api::{AdventCalendarDay, NoRiskApi, ReferralInfo, UniquePlayersResponse, UserNotification};
 use crate::minecraft::api::wordpress_api::{BlogPost, WordPressApi};
 use crate::state::state_manager::State;
 use chrono::{Duration as ChronoDuration, Utc};
@@ -364,6 +366,7 @@ pub async fn github_auth_unlink() -> Result<(), CommandError> {
     Ok(())
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn check_crash_log_command(
     payload: CrashlogDto,

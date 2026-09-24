@@ -1,3 +1,6 @@
+// Mobile builds leave the launcher out; the desktop build still reports these.
+#![cfg_attr(mobile, allow(unused_imports, unused_macros, dead_code))]
+
 #[macro_use]
 pub mod utils;
 #[cfg(desktop)]
@@ -6,10 +9,12 @@ pub mod commands;
 pub mod config;
 pub mod error;
 pub mod friends;
+#[cfg(desktop)]
 pub mod integrations;
 pub mod logging;
 pub mod minecraft;
 pub mod state;
+#[cfg(desktop)]
 pub mod sync;
 
 use log::{error, info, trace};
@@ -23,6 +28,7 @@ use utils::updater_utils;
 
 use crate::commands::analytics_command::track_analytics_event;
 use crate::commands::font_command::list_system_fonts;
+#[cfg(desktop)]
 use crate::commands::process_command::{
     fetch_crash_report, get_process, get_process_log_cursor,
     get_processes, get_processes_by_profile, stop_process,
@@ -51,6 +57,7 @@ use commands::minecraft_command::{
     upload_log_to_mclogs_command,
     upload_skin,
 };
+#[cfg(desktop)]
 use commands::profile_command::{
     abort_profile_launch, add_modrinth_content_to_profile, add_modrinth_mod_to_profile,
     batch_check_content_installed, check_for_group_migration_command, check_world_lock_status, copy_profile, copy_world,
@@ -72,8 +79,10 @@ use commands::profile_command::{
 };
 
 // Use statements for registered commands only
+#[cfg(desktop)]
 use commands::curseforge_commands::{get_curseforge_mods_by_ids, download_and_install_curseforge_modpack_command, get_curseforge_file_changelog_command, get_curseforge_mod_description_command};
 
+#[cfg(desktop)]
 use commands::modrinth_commands::{
     check_modrinth_updates, check_mod_updates_unified_command, download_and_install_modrinth_modpack,
     clear_content_cache_command, get_all_modrinth_versions_for_contexts, get_modrinth_tags_command,
@@ -85,10 +94,13 @@ use commands::modrinth_commands::{
 };
 
 use commands::file_command::{
-    delete_file, get_icons_for_archives, get_icons_for_norisk_mods, list_all_mc_logs,
-    list_crash_reports, list_launcher_logs, list_process_logs, open_file, open_file_directory,
-    read_file_bytes,
+    get_icons_for_archives, list_launcher_logs, open_file, open_file_directory, read_file_bytes,
     set_file_enabled,
+};
+#[cfg(desktop)]
+use commands::file_command::{
+    delete_file, get_icons_for_norisk_mods, list_all_mc_logs, list_crash_reports,
+    list_process_logs,
 };
 
 // Import config commands
@@ -100,7 +112,9 @@ use tauri::{
 };
 
 // Import path commands
-use commands::path_commands::{get_launcher_directory, resolve_image_path};
+use commands::path_commands::get_launcher_directory;
+#[cfg(desktop)]
+use commands::path_commands::resolve_image_path;
 
 // Import cape commands
 use commands::cape_command::{
@@ -129,6 +143,7 @@ use commands::assets_command::get_or_download_asset_model;
 use commands::nrc_commands::get_news_and_changelogs_command;
 
 // Import Content commands
+#[cfg(desktop)]
 use commands::content_command::{
     bulk_toggle_mod_updates, install_content_to_profile, install_local_content_to_profile,
     switch_content_version, toggle_content_from_profile, toggle_contents_from_profile,
@@ -139,6 +154,7 @@ use commands::content_command::{
 };
 
 // Import Java commands
+#[cfg(desktop)]
 use commands::java_command::{
     detect_java_installations_command, find_best_java_for_minecraft_command, get_java_info_command,
     invalidate_java_cache_command, validate_java_path_command,
@@ -460,6 +476,7 @@ pub fn run() {
                 // Sweep last session's throwaway temp profiles into the trash
                 // (non-blocking, best-effort). The trash's purge_expired retention
                 // then deletes them for good. See utils::trash_utils.
+                #[cfg(desktop)]
                 tauri::async_runtime::spawn(async {
                     utils::trash_utils::reap_temp_profiles().await;
                 });
@@ -473,11 +490,13 @@ pub fn run() {
                 });
 
                 // Issue #130: recover disk from pre-fix runaway logs.
+                #[cfg(desktop)]
                 tauri::async_runtime::spawn(async {
                     utils::log_archive::cleanup_oversized_logs().await;
                 });
 
                 // Issue #242: drop stale/orphan cached jars (debounced, best-effort).
+                #[cfg(desktop)]
                 tauri::async_runtime::spawn(async {
                     utils::mod_cache_cleanup::run_startup_cleanup().await;
                 });
@@ -618,28 +637,49 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            #[cfg(desktop)]
             utils::mod_cache_cleanup::debug_list_expected_cache_filenames,
+            #[cfg(desktop)]
             utils::mod_cache_cleanup::clean_mod_cache_command,
             list_system_fonts,
+            #[cfg(desktop)]
             create_profile,
+            #[cfg(desktop)]
             get_profile,
+            #[cfg(desktop)]
             update_profile,
+            #[cfg(desktop)]
             delete_profile,
+            #[cfg(desktop)]
             repair_profile,
+            #[cfg(desktop)]
             resolve_loader_version,
+            #[cfg(desktop)]
             list_profiles,
+            #[cfg(desktop)]
             list_profile_backups,
+            #[cfg(desktop)]
             restore_profile_backup,
+            #[cfg(desktop)]
             get_profile_store_status,
+            #[cfg(desktop)]
             reimport_profiles_from_legacy_json,
+            #[cfg(desktop)]
             search_profiles,
             get_minecraft_versions,
+            #[cfg(desktop)]
             launch_profile,
+            #[cfg(desktop)]
             abort_profile_launch,
+            #[cfg(desktop)]
             is_profile_launching,
+            #[cfg(desktop)]
             get_processes,
+            #[cfg(desktop)]
             get_process,
+            #[cfg(desktop)]
             get_processes_by_profile,
+            #[cfg(desktop)]
             stop_process,
             #[cfg(desktop)]
             commands::process_command::open_minecraft_log_window,
@@ -654,43 +694,80 @@ pub fn run() {
             get_active_account,
             set_active_account,
             get_accounts,
+            #[cfg(desktop)]
             search_modrinth_mods,
+            #[cfg(desktop)]
             search_modrinth_projects,
+            #[cfg(desktop)]
             search_mods_unified_command,
+            #[cfg(desktop)]
             get_mod_versions_unified_command,
+            #[cfg(desktop)]
             get_modpack_versions_unified_command,
+            #[cfg(desktop)]
             get_curseforge_mods_by_ids,
+            #[cfg(desktop)]
             download_and_install_curseforge_modpack_command,
+            #[cfg(desktop)]
             get_curseforge_file_changelog_command,
+            #[cfg(desktop)]
             get_curseforge_mod_description_command,
+            #[cfg(desktop)]
             get_modrinth_mod_versions,
+            #[cfg(desktop)]
             add_modrinth_mod_to_profile,
+            #[cfg(desktop)]
             add_modrinth_content_to_profile,
+            #[cfg(desktop)]
             get_modrinth_project_details,
+            #[cfg(desktop)]
             get_modrinth_project_members,
+            #[cfg(desktop)]
             check_modrinth_updates,
+            #[cfg(desktop)]
             check_mod_updates_unified_command,
             get_icons_for_archives,
+            #[cfg(desktop)]
             set_profile_mod_enabled,
+            #[cfg(desktop)]
             delete_mod_from_profile,
+            #[cfg(desktop)]
             get_norisk_packs,
+            #[cfg(desktop)]
             get_norisk_packs_resolved,
+            #[cfg(desktop)]
             set_norisk_mod_status,
+            #[cfg(desktop)]
             update_modrinth_mod_version,
+            #[cfg(desktop)]
             get_all_modrinth_versions_for_contexts,
+            #[cfg(desktop)]
             get_process_log_cursor,
+            #[cfg(desktop)]
             fetch_crash_report,
+            #[cfg(desktop)]
             get_custom_mods,
+            #[cfg(desktop)]
             get_local_resourcepacks,
+            #[cfg(desktop)]
             get_local_shaderpacks,
+            #[cfg(desktop)]
             get_local_datapacks,
+            #[cfg(desktop)]
             set_custom_mod_enabled,
+            #[cfg(desktop)]
             import_local_mods,
+            #[cfg(desktop)]
             get_system_ram_mb,
+            #[cfg(desktop)]
             get_default_memory_max_mb,
+            #[cfg(desktop)]
             delete_custom_mod,
+            #[cfg(desktop)]
             open_profile_folder,
+            #[cfg(desktop)]
             import_profile,
+            #[cfg(desktop)]
             preview_import_pack,
             upload_log_to_mclogs_command,
             get_fabric_loader_versions,
@@ -698,21 +775,33 @@ pub fn run() {
             get_neoforge_versions,
             get_quilt_loader_versions,
             set_file_enabled,
+            #[cfg(desktop)]
             delete_file,
+            #[cfg(desktop)]
             get_icons_for_norisk_mods,
             open_file_directory,
+            #[cfg(desktop)]
             download_and_install_modrinth_modpack,
+            #[cfg(desktop)]
             get_standard_profiles,
+            #[cfg(desktop)]
             get_profile_directory_structure,
+            #[cfg(desktop)]
             copy_profile,
+            #[cfg(desktop)]
             export_profile,
             get_launcher_config,
             set_launcher_config,
             get_launcher_directory,
+            #[cfg(desktop)]
             resolve_image_path,
+            #[cfg(desktop)]
             commands::path_commands::upload_profile_images,
+            #[cfg(desktop)]
             update_resourcepack_from_modrinth,
+            #[cfg(desktop)]
             update_shaderpack_from_modrinth,
+            #[cfg(desktop)]
             update_datapack_from_modrinth,
             get_user_skin_data,
             upload_skin,
@@ -742,30 +831,53 @@ pub fn run() {
             unequip_cape,
             add_favorite_cape,
             remove_favorite_cape,
+            #[cfg(desktop)]
             refresh_norisk_packs,
+            #[cfg(desktop)]
             refresh_standard_versions,
+            #[cfg(desktop)]
             is_content_installed,
+            #[cfg(desktop)]
             batch_check_content_installed,
+            #[cfg(desktop)]
             check_for_group_migration_command,
+            #[cfg(desktop)]
             open_profile_latest_log,
+            #[cfg(desktop)]
             detect_java_installations_command,
+            #[cfg(desktop)]
             get_java_info_command,
+            #[cfg(desktop)]
             find_best_java_for_minecraft_command,
+            #[cfg(desktop)]
             invalidate_java_cache_command,
+            #[cfg(desktop)]
             validate_java_path_command,
+            #[cfg(desktop)]
             get_worlds_for_profile,
+            #[cfg(desktop)]
             get_servers_for_profile,
+            #[cfg(desktop)]
             copy_world,
+            #[cfg(desktop)]
             import_world,
+            #[cfg(desktop)]
             check_world_lock_status,
             ping_minecraft_server,
+            #[cfg(desktop)]
             delete_world,
+            #[cfg(desktop)]
             get_profile_log_files,
+            #[cfg(desktop)]
             get_log_file_content,
+            #[cfg(desktop)]
             list_profile_screenshots,
             list_launcher_logs,
+            #[cfg(desktop)]
             list_crash_reports,
+            #[cfg(desktop)]
             list_all_mc_logs,
+            #[cfg(desktop)]
             list_process_logs,
             open_file,
             read_file_bytes,
@@ -775,26 +887,42 @@ pub fn run() {
             commands::nrc_commands::check_update_available_command,
             #[cfg(desktop)]
             commands::nrc_commands::download_and_install_update_command,
+            #[cfg(desktop)]
             get_modrinth_tags_command,
+            #[cfg(desktop)]
             clear_content_cache_command,
+            #[cfg(desktop)]
             get_modrinth_versions_by_hashes,
+            #[cfg(desktop)]
             switch_modpack_version_command,
+            #[cfg(desktop)]
             uninstall_content_from_profile,
+            #[cfg(desktop)]
             toggle_content_from_profile,
+            #[cfg(desktop)]
             toggle_contents_from_profile,
+            #[cfg(desktop)]
             update_contents_from_profile,
+            #[cfg(desktop)]
             uninstall_contents_from_profile,
+            #[cfg(desktop)]
             toggle_mod_updates,
+            #[cfg(desktop)]
             bulk_toggle_mod_updates,
+            #[cfg(desktop)]
             install_content_to_profile,
             commands::minecraft_command::get_profile_by_name_or_uuid,
             commands::minecraft_command::add_skin_locally,
             commands::minecraft_command::get_base64_from_skin_source_command,
             commands::file_command::get_image_preview,
             download_template_and_open_explorer,
+            #[cfg(desktop)]
             get_all_profiles_and_last_played,
+            #[cfg(desktop)]
             get_local_content,
+            #[cfg(desktop)]
             install_local_content_to_profile,
+            #[cfg(desktop)]
             switch_content_version,
             commands::minecraft_command::get_face_avatar,
             commands::skin_render_command::get_cached_skin_render,
@@ -815,23 +943,40 @@ pub fn run() {
             commands::nrc_commands::github_auth_link,
             commands::nrc_commands::github_auth_status,
             commands::nrc_commands::github_auth_unlink,
+            #[cfg(desktop)]
             commands::nrc_commands::check_crash_log_command,
+            #[cfg(desktop)]
             commands::crash_fix_command::apply_crash_fix,
+            #[cfg(desktop)]
             commands::crash_fix_command::revert_crash_fix,
             commands::nrc_commands::log_message_command,
+            #[cfg(desktop)]
             commands::flagsmith_commands::set_blocked_mods_config,
+            #[cfg(desktop)]
             commands::flagsmith_commands::get_blocked_mods_config,
+            #[cfg(desktop)]
             commands::flagsmith_commands::is_filename_blocked,
+            #[cfg(desktop)]
             commands::flagsmith_commands::is_mod_id_blocked,
+            #[cfg(desktop)]
             commands::flagsmith_commands::is_modrinth_project_id_blocked,
+            #[cfg(desktop)]
             commands::flagsmith_commands::refresh_blocked_mods_config,
+            #[cfg(desktop)]
             commands::pack_rollout_commands::set_pack_rollout_config,
+            #[cfg(desktop)]
             commands::pack_rollout_commands::get_pack_rollout_config,
+            #[cfg(desktop)]
             commands::pack_rollout_commands::get_pack_rollout_status,
+            #[cfg(desktop)]
             commands::pack_rollout_commands::get_effective_pack_id,
+            #[cfg(desktop)]
             commands::pack_rollout_commands::is_pack_rollout_active,
+            #[cfg(desktop)]
             commands::pack_rollout_commands::is_pack_aliased,
+            #[cfg(desktop)]
             commands::pack_fallback_commands::set_pack_fallback_config,
+            #[cfg(desktop)]
             commands::pack_fallback_commands::get_pack_fallback_config,
             commands::permission_commands::refresh_permissions,
             commands::permission_commands::get_cached_permissions,
@@ -858,48 +1003,91 @@ pub fn run() {
             refresh_vanilla_cape_data,
             track_analytics_event,
             commands::analytics_command::get_system_os_info,
+            #[cfg(desktop)]
             commands::profile_command::launch_profile_with_overrides,
+            #[cfg(desktop)]
             commands::profile_command::launch_temp_profile,
+            #[cfg(desktop)]
             commands::profile_command::add_profile_symlink,
+            #[cfg(desktop)]
             commands::profile_command::remove_profile_symlink,
+            #[cfg(desktop)]
             commands::profile_command::get_profile_symlinks,
+            #[cfg(desktop)]
             commands::sync_pack_command::get_or_create_default_sync_pack,
+            #[cfg(desktop)]
             commands::sync_pack_command::add_dropped_sync_target,
+            #[cfg(desktop)]
             commands::sync_pack_command::list_sync_seed_candidates,
+            #[cfg(desktop)]
             commands::sync_pack_command::preview_profile_sync,
+            #[cfg(desktop)]
             commands::sync_pack_command::get_sync_packs,
+            #[cfg(desktop)]
             commands::sync_pack_command::get_sync_pack,
+            #[cfg(desktop)]
             commands::sync_pack_command::create_sync_pack,
+            #[cfg(desktop)]
             commands::sync_pack_command::update_sync_pack,
+            #[cfg(desktop)]
             commands::sync_pack_command::import_sync_pack_icon,
+            #[cfg(desktop)]
             commands::sync_pack_command::add_sync_pack_target,
+            #[cfg(desktop)]
             commands::sync_pack_command::count_sync_pack_target_users,
+            #[cfg(desktop)]
             commands::sync_pack_command::remove_sync_pack_target,
+            #[cfg(desktop)]
             commands::sync_pack_command::add_content_to_sync_pack,
+            #[cfg(desktop)]
             commands::sync_pack_command::remove_content_from_sync_pack,
+            #[cfg(desktop)]
             commands::sync_pack_command::remove_mod_from_sync_pack,
+            #[cfg(desktop)]
             commands::sync_pack_command::get_sync_pack_local_jars,
+            #[cfg(desktop)]
             commands::sync_pack_command::remove_sync_pack_local_jar,
+            #[cfg(desktop)]
             commands::sync_pack_command::get_sync_pack_subscribers,
+            #[cfg(desktop)]
             commands::sync_pack_command::open_sync_pack_folder,
+            #[cfg(desktop)]
             commands::sync_pack_command::delete_sync_pack,
+            #[cfg(desktop)]
             commands::sync_pack_command::set_profile_sync_packs,
+            #[cfg(desktop)]
             commands::sync_pack_command::get_profile_sync_conflicts,
+            #[cfg(desktop)]
             commands::sync_pack_command::sync_profile_now,
+            #[cfg(desktop)]
             commands::sync_pack_command::set_sync_pack_mod_enabled,
+            #[cfg(desktop)]
             commands::sync_pack_command::remove_sync_pack_entries,
+            #[cfg(desktop)]
             commands::sync_pack_command::set_sync_pack_mods_enabled,
+            #[cfg(desktop)]
             commands::sync_pack_command::set_sync_pack_mod_version_override,
+            #[cfg(desktop)]
             commands::sync_pack_command::get_sync_pack_mod_matrix,
+            #[cfg(desktop)]
             commands::sync_pack_command::resolve_sync_pack_mod,
+            #[cfg(desktop)]
             commands::launcher_import_command::scan_external_launchers,
+            #[cfg(desktop)]
             commands::launcher_import_command::add_external_launcher_root,
+            #[cfg(desktop)]
             commands::launcher_import_command::list_external_instances,
+            #[cfg(desktop)]
             commands::launcher_import_command::preview_external_instance,
+            #[cfg(desktop)]
             commands::launcher_import_command::import_external_instance,
+            #[cfg(desktop)]
             commands::launcher_import_command::cancel_external_import,
+            #[cfg(desktop)]
             commands::profile_command::get_profile_instance_path,
+            #[cfg(desktop)]
             commands::profile_command::get_default_profile_path,
+            #[cfg(desktop)]
             commands::profile_command::get_profile_disk_size,
             get_or_download_asset_model,
             get_friends,

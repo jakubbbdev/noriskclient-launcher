@@ -1,14 +1,18 @@
 use crate::config::{ProjectDirsExt, LAUNCHER_DIRECTORY};
 use crate::error::{AppError, Result};
+#[cfg(desktop)]
 use crate::integrations::curseforge::{self, CurseForgeMod, CurseForgeModsResponse};
+#[cfg(desktop)]
 use crate::integrations::modrinth::{
     self, ModrinthProject, ModrinthTags, ModrinthTeamMember, ModrinthVersion,
 };
+#[cfg(desktop)]
 use crate::integrations::unified_mod::{
     self, ModPlatform, UnifiedModpackVersionsResponse, UnifiedUpdateCheckRequest,
     UnifiedUpdateCheckResponse, UnifiedVersion,
 };
 use crate::state::post_init::PostInitializationHandler;
+#[cfg(desktop)]
 use crate::state::profile_state::ModPackSource;
 use async_trait::async_trait;
 use log::{debug, info, warn};
@@ -491,6 +495,7 @@ impl ContentCacheManager {
         self.put_entries(kind::FILE_HASH, rows).await;
     }
 
+    #[cfg(desktop)]
     pub async fn get_modrinth_versions_by_hashes(
         &self,
         hashes: Vec<String>,
@@ -561,6 +566,7 @@ impl ContentCacheManager {
         Ok(result)
     }
 
+    #[cfg(desktop)]
     async fn put_modrinth_versions(
         &self,
         requested: &[String],
@@ -586,6 +592,7 @@ impl ContentCacheManager {
         self.put_entries(kind::MODRINTH_VERSION, rows).await;
     }
 
+    #[cfg(desktop)]
     pub async fn cache_modrinth_version(&self, version: &ModrinthVersion) {
         let sha1 = version
             .files
@@ -605,6 +612,7 @@ impl ContentCacheManager {
         .await;
     }
 
+    #[cfg(desktop)]
     pub async fn get_modrinth_projects(
         &self,
         ids: Vec<String>,
@@ -673,6 +681,7 @@ impl ContentCacheManager {
         Ok(result)
     }
 
+    #[cfg(desktop)]
     pub async fn peek_modrinth_projects(
         &self,
         ids: Vec<String>,
@@ -684,6 +693,7 @@ impl ContentCacheManager {
             .collect()
     }
 
+    #[cfg(desktop)]
     async fn put_modrinth_projects(&self, fetched: &[ModrinthProject]) {
         let rows = fetched
             .iter()
@@ -697,6 +707,7 @@ impl ContentCacheManager {
         self.put_entries(kind::MODRINTH_PROJECT, rows).await;
     }
 
+    #[cfg(desktop)]
     pub async fn get_curseforge_mods(
         &self,
         mod_ids: Vec<u32>,
@@ -768,6 +779,7 @@ impl ContentCacheManager {
         Ok(CurseForgeModsResponse { data: result })
     }
 
+    #[cfg(desktop)]
     pub async fn peek_curseforge_mods(&self, mod_ids: Vec<u32>) -> HashMap<u32, CurseForgeMod> {
         let keys: Vec<String> = mod_ids.iter().map(|id| id.to_string()).collect();
         self.get_entries::<CurseForgeMod>(kind::CURSEFORGE_MOD, &keys)
@@ -780,6 +792,7 @@ impl ContentCacheManager {
             .collect()
     }
 
+    #[cfg(desktop)]
     pub async fn put_curseforge_mods(&self, fetched: &[CurseForgeMod]) {
         let rows = fetched
             .iter()
@@ -793,6 +806,7 @@ impl ContentCacheManager {
         self.put_entries(kind::CURSEFORGE_MOD, rows).await;
     }
 
+    #[cfg(desktop)]
     pub async fn check_mod_updates_unified(
         &self,
         request: UnifiedUpdateCheckRequest,
@@ -883,6 +897,7 @@ impl ContentCacheManager {
         })
     }
 
+    #[cfg(desktop)]
     async fn put_unified_updates(
         &self,
         request: &UnifiedUpdateCheckRequest,
@@ -918,6 +933,7 @@ impl ContentCacheManager {
         self.put_entries(kind::UNIFIED_UPDATE, rows).await;
     }
 
+    #[cfg(desktop)]
     pub async fn get_modpack_versions(
         &self,
         source: &ModPackSource,
@@ -951,6 +967,7 @@ impl ContentCacheManager {
         self.fetch_modpack_versions(source).await
     }
 
+    #[cfg(desktop)]
     async fn fetch_modpack_versions(
         &self,
         source: &ModPackSource,
@@ -986,6 +1003,7 @@ impl ContentCacheManager {
         Ok(fetched)
     }
 
+    #[cfg(desktop)]
     pub async fn get_modrinth_tags(&self, behaviour: CacheBehaviour) -> Result<ModrinthTags> {
         if behaviour != CacheBehaviour::Bypass {
             if let Some(entry) = self
@@ -1012,6 +1030,7 @@ impl ContentCacheManager {
         self.fetch_modrinth_tags().await
     }
 
+    #[cfg(desktop)]
     async fn fetch_modrinth_tags(&self) -> Result<ModrinthTags> {
         let _guard = self.inner.tags_fetch_lock.lock().await;
 
@@ -1038,6 +1057,7 @@ impl ContentCacheManager {
         Ok(fetched)
     }
 
+    #[cfg(desktop)]
     pub async fn get_modrinth_project_members(
         &self,
         project_id_or_slug: &str,
@@ -1071,6 +1091,7 @@ impl ContentCacheManager {
         self.fetch_project_members(&key).await
     }
 
+    #[cfg(desktop)]
     async fn fetch_project_members(&self, key: &str) -> Result<Vec<ModrinthTeamMember>> {
         let _guard = self.project_fetch_lock(&format!("members:{}", key)).await;
 
@@ -1097,6 +1118,7 @@ impl ContentCacheManager {
         Ok(fetched)
     }
 
+    #[cfg(desktop)]
     pub async fn get_modrinth_project_versions(
         &self,
         project_id_or_slug: &str,
@@ -1137,6 +1159,7 @@ impl ContentCacheManager {
             .await
     }
 
+    #[cfg(desktop)]
     async fn fetch_project_versions(
         &self,
         project_id_or_slug: &str,
@@ -1171,6 +1194,7 @@ impl ContentCacheManager {
         Ok(fetched)
     }
 
+    #[cfg(desktop)]
     pub async fn get_curseforge_description(
         &self,
         mod_id: u32,
@@ -1203,6 +1227,7 @@ impl ContentCacheManager {
         self.fetch_curseforge_description(mod_id).await
     }
 
+    #[cfg(desktop)]
     async fn fetch_curseforge_description(&self, mod_id: u32) -> Result<String> {
         let key = mod_id.to_string();
         let _guard = self
@@ -1264,6 +1289,7 @@ pub fn project_versions_cache_key(
     )
 }
 
+#[cfg(desktop)]
 pub fn modpack_cache_key(source: &ModPackSource) -> String {
     match source {
         ModPackSource::Modrinth {
@@ -1277,6 +1303,7 @@ pub fn modpack_cache_key(source: &ModPackSource) -> String {
     }
 }
 
+#[cfg(desktop)]
 fn identifier_platform(request: &UnifiedUpdateCheckRequest, identifier: &str) -> ModPlatform {
     request
         .hash_platforms
@@ -1286,6 +1313,7 @@ fn identifier_platform(request: &UnifiedUpdateCheckRequest, identifier: &str) ->
         .unwrap_or(ModPlatform::Modrinth)
 }
 
+#[cfg(desktop)]
 fn update_cache_key(request: &UnifiedUpdateCheckRequest, identifier: &str) -> String {
     let platform = identifier_platform(request, identifier);
 
@@ -1315,6 +1343,7 @@ fn subset_map<T: Clone>(
     })
 }
 
+#[cfg(desktop)]
 fn subset_request(
     request: &UnifiedUpdateCheckRequest,
     identifiers: &[String],

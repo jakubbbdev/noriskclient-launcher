@@ -1,4 +1,5 @@
 use crate::error::Result;
+#[cfg(desktop)]
 use crate::state::process_state::ProcessMetadata;
 use dashmap::DashMap;
 use log::info;
@@ -68,6 +69,7 @@ pub struct EventPayload {
     pub error: Option<String>,
 }
 
+#[cfg(desktop)]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct MinecraftProcessExitedPayload {
     pub profile_id: Uuid,

@@ -319,8 +319,9 @@ export function App() {
     };
   }, [showModal, hideModal, t]);
 
+  // Packs, versions and blocked-mod lists only matter for profiles and launching.
   useEffect(() => {
-    refreshNrcDataOnMount();
+    if (!isMobile) refreshNrcDataOnMount();
   }, []);
 
   useEffect(() => {
@@ -359,7 +360,8 @@ export function App() {
   }, [activeAccount, fetchNotifications]);
 
   useEffect(() => {
-    if (!activeAccount) return;
+    // The tester queue opens a separate window that only exists on desktop.
+    if (!activeAccount || isMobile) return;
     let cancelled = false;
     (async () => {
       try {

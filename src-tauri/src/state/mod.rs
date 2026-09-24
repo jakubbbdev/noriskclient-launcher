@@ -9,14 +9,20 @@ pub mod db;
 pub mod discord_state;
 pub mod event_state;
 pub mod friends_state;
+#[cfg(desktop)]
 pub mod norisk_packs_state;
+#[cfg(desktop)]
 pub mod norisk_versions_state;
 pub mod post_init;
+#[cfg(desktop)]
 pub mod process_state;
+#[cfg(desktop)]
 pub mod profile_state;
+#[cfg(desktop)]
 pub mod profile_store;
 pub mod skin_state;
 pub mod state_manager;
+#[cfg(desktop)]
 pub mod sync_pack_state;
 
 pub use state_manager::State;
