@@ -143,6 +143,7 @@ pub async fn fetch_crash_report(profile_id: Uuid, process_id: Option<Uuid>, proc
     Ok(crash_content)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn set_discord_state(
     state_type: String,
@@ -154,6 +155,7 @@ pub async fn set_discord_state(
     Ok(())
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn open_minecraft_log_window<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
@@ -210,6 +212,7 @@ pub async fn open_minecraft_log_window<R: tauri::Runtime>(
     Ok(())
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn open_single_log_window<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
@@ -271,6 +274,7 @@ pub async fn open_single_log_window<R: tauri::Runtime>(
     Ok(())
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn focus_main_window<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,

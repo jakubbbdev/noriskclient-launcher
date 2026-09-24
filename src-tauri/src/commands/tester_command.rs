@@ -92,6 +92,7 @@ pub async fn submit_tester_vote(
     Ok(resp)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn open_tester_window<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,

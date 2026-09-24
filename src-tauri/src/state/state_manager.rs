@@ -5,6 +5,7 @@ use crate::state::active_skin_state::{default_active_skins_path, ActiveSkinManag
 use crate::state::config_state::ConfigManager;
 use crate::state::content_cache_state::ContentCacheManager;
 use crate::state::cosmetic_pack_state::CosmeticPackManager;
+#[cfg(desktop)]
 use crate::state::discord_state::DiscordManager;
 use crate::state::event_state::{EventPayload, EventState};
 use crate::state::friends_state::FriendsState;
@@ -34,10 +35,12 @@ pub struct State {
     pub config_manager: ConfigManager,
     pub skin_manager: SkinManager,
     pub active_skin_manager: ActiveSkinManager,
+    #[cfg(desktop)]
     pub discord_manager: DiscordManager,
     pub cosmetic_pack_manager: CosmeticPackManager,
     pub friends_state: FriendsState,
     pub content_cache: ContentCacheManager,
+    #[cfg(desktop)]
     pub capture_supervisor: Arc<crate::state::capture_state::CaptureSupervisor>,
     pub sync_pack_manager: SyncPackManager,
     pub db: crate::state::db::DbHandle,
@@ -63,6 +66,7 @@ impl State {
             .get_or_try_init(|| async {
                 log::trace!("State::init - Starting primary initialization of managers (Phase 1 - Lightweight Instantiation)...");
                 let config_manager = ConfigManager::new()?;
+                #[cfg(desktop)]
                 let discord_manager = DiscordManager::new(false).await?;
                 let io_semaphore = Arc::new(Semaphore::new(10));
                 let event_state = EventState::new(Some(app.clone()));
@@ -94,10 +98,12 @@ impl State {
                     config_manager,
                     skin_manager,
                     active_skin_manager,
+                    #[cfg(desktop)]
                     discord_manager,
                     cosmetic_pack_manager,
                     friends_state,
                     content_cache,
+                    #[cfg(desktop)]
                     capture_supervisor: Arc::new(
                         crate::state::capture_state::CaptureSupervisor::new(),
                     ),
@@ -128,6 +134,7 @@ impl State {
             );
         }
 
+        #[cfg(desktop)]
         initial_state_arc
             .discord_manager
             .set_enabled(loaded_config.enable_discord_presence)

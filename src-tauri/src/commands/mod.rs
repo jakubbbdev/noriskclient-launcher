@@ -6,6 +6,7 @@ pub mod cosmetic_command;
 pub mod icon_command;
 pub mod launcher_import_command;
 pub mod request_context;
+#[cfg(desktop)]
 pub mod clip_commands;
 pub mod config_commands;
 pub mod content_command;
@@ -14,6 +15,7 @@ pub mod curseforge_commands;
 pub mod file_command;
 pub mod flagsmith_commands;
 pub mod friends_command;
+pub mod mcreal_commands;
 pub mod java_command;
 pub mod minecraft_auth_command;
 pub mod minecraft_command;
@@ -34,4 +36,5 @@ pub mod tester_command;
 pub mod vanilla_cape_command;
 pub mod analytics_command;
 pub mod font_command;
+#[cfg(desktop)]
 pub mod capture_permissions;

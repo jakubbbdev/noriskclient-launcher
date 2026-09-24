@@ -214,8 +214,11 @@
         ],
         "connect-src": [
           "'self'",
+          "ipc:",
+          "http://ipc.localhost",
           "asset:",
           "http://asset.localhost",
+          "https://asset.localhost",
           "data:",
           "https://api.iconify.design",
           "https://*.modrinth.com",
@@ -226,6 +229,7 @@
           "'self'",
           "asset:",
           "http://asset.localhost",
+          "https://asset.localhost",
           "https://*.modrinth.com",
           "https://cdn.modrinth.com",
           "https://*.norisk.gg",
@@ -270,6 +274,7 @@
           "'self'",
           "asset:",
           "http://asset.localhost",
+          "https://asset.localhost",
           "blob:",
           "data:"
         ]

@@ -33,7 +33,8 @@ norisk-ipc = { path = "crates/norisk-ipc" }
 norisk-logging = { path = "crates/norisk-logging" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream", "multipart"] }
+# default-features off: native-tls pulls OpenSSL on Android. Desktop re-enables it below.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart", "charset", "http2"] }
 tokio = { version = "1.0", features = ["full"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 thiserror = "1.0"
@@ -68,7 +69,6 @@ p256 = "0.13.2"
 base64 = "0.21.7"
 jsonwebtoken = "9.3.0"
 fontdb = "0.18"
-machineid-rs = "1.2.4"
 byteorder = { version = "1.4" }
 tempfile = "3.8"
 anyhow = "1.0"
@@ -82,7 +82,6 @@ sanitize-filename = "0.6.0"
 tauri-plugin-dialog = "2.6.0"
 tauri-plugin-clipboard-manager = "2.3.2"
 dirs = "6.0.0"
-discord-rich-presence = "0.2.3"
 regex = "1.10.2"
 lazy_static = "1.4.0"
 fastnbt = "2.5.0"
@@ -137,6 +136,10 @@ tauri-plugin-single-instance = { version = "2.3.7", features = ["deep-link"] }
 tauri-plugin-deep-link = "2"
 tauri-plugin-cli = "2"
 tauri = { version = "2.9.5", features = [ "tray-icon" ] }
+# Keep native-tls (system cert store) as the desktop default, like before the mobile split.
+reqwest = { version = "0.12", features = ["default-tls", "macos-system-configuration"] }
+machineid-rs = "1.2.4"
+discord-rich-presence = "0.2.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 norisk-capture = { path = "crates/norisk-capture" }

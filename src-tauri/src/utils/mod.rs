@@ -18,13 +18,20 @@ pub mod mod_cache_cleanup; // mod_cache keep-set + debounced startup orphan clea
 pub mod file_utils; // Utilities for file operations like reading archives
 pub mod export_utils;
 pub mod hash_utils;
+// Clips/capture: desktop only, not part of the mobile app.
+#[cfg(desktop)]
 pub mod capture_runtime;
+#[cfg(desktop)]
 pub mod clip_library;
+#[cfg(desktop)]
 pub mod clip_overlay;
 #[cfg(windows)]
 pub mod hotkey_hook;
+#[cfg(desktop)]
 pub mod window_finder;
+#[cfg(desktop)]
 pub mod game_detect; // Recognises a game on screen so clips are not Minecraft-only
+#[cfg(desktop)]
 pub mod game_watch; // Follows the foreground game and keeps the engine pointed at it
 #[cfg(windows)]
 pub mod hotkey_manager;
@@ -46,6 +53,7 @@ pub mod security_utils; // Security utilities for masking sensitive data
 pub mod server_ping; // Server-Ping-Modul für die Kommunikation mit Minecraft-Servern
 pub mod shaderpack_utils; // ShaderPack-Utils für das Scannen und Verwalten von ShaderPacks
 pub mod system_info; // <-- Hinzufügen
+#[cfg(desktop)]
 pub mod updater_utils;
 pub mod world_utils; // <-- Hinzugefügt
 pub mod trash_utils; // <-- New trash module

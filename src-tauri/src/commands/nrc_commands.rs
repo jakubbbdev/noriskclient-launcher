@@ -6,6 +6,7 @@ use chrono::{Duration as ChronoDuration, Utc};
 use log::info;
 use log::{debug, error};
 use tauri::{AppHandle, Manager, Url, UserAttentionType, WebviewUrl, WebviewWindowBuilder};
+#[cfg(desktop)]
 use crate::utils::updater_utils;
 
 /// Fetches news and changelog posts from the WordPress API.
@@ -19,6 +20,7 @@ pub async fn get_news_and_changelogs_command() -> Result<Vec<BlogPost>, CommandE
     Ok(WordPressApi::get_news_and_changelogs().await?)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn discord_auth_link(app: AppHandle) -> Result<(), CommandError> {
     debug!("Executing discord_auth_link command");
@@ -190,6 +192,7 @@ pub async fn discord_auth_unlink() -> Result<(), CommandError> {
     Ok(())
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn github_auth_link(app: AppHandle) -> Result<(), CommandError> {
     debug!("Executing github_auth_link command");
@@ -457,6 +460,7 @@ pub async fn reset_mobile_app_token() -> Result<String, CommandError> {
     Ok(NoRiskApi::reset_mcreal_app_token(&token, &account_id_str, is_experimental).await?)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn check_update_available_command(app: AppHandle) -> Result<Option<crate::utils::updater_utils::UpdateInfo>, CommandError> {
     debug!("Executing check_update_available_command");
@@ -469,6 +473,7 @@ pub async fn check_update_available_command(app: AppHandle) -> Result<Option<cra
     Ok(updater_utils::check_update_available(&app, is_beta_channel).await?)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn download_and_install_update_command(app: AppHandle) -> Result<(), CommandError> {
     debug!("Executing download_and_install_update_command");

@@ -889,6 +889,7 @@ impl ConfigManager {
             update_custom_game_dir(new_config.custom_game_directory.clone());
 
             // Update Discord status if it changed
+            #[cfg(desktop)]
             if let Ok(state) = crate::state::State::get().await {
                 // Check if Discord status changed
                 let discord_enabled = new_config.enable_discord_presence;
