@@ -38,6 +38,7 @@ import { FriendsSidebar } from "../friends/FriendsSidebar";
 import { useFriendsStore } from "../../store/friends-store";
 import { useClipsStore } from "../../store/clips-store";
 import { useChatStore } from "../../store/chat-store";
+import { useNotificationStore } from "../../store/notification-store";
 import { checkUpdateAvailable, downloadAndInstallUpdate } from "../../services/nrc-service";
 import type { UpdateInfo } from "../../types/updater";
 import { ProfileWizardV2Modal } from "../modals/ProfileWizardV2Modal";
@@ -128,6 +129,21 @@ export function AppLayout({
       }
     };
     initFriends();
+  }, []);
+
+  // Phones: nothing is pushed live, so catch up when the app comes back to the foreground.
+  useEffect(() => {
+    if (!isMobile) return;
+    const onVisible = () => {
+      if (document.hidden) return;
+      const friends = useFriendsStore.getState();
+      friends.loadFriends(true).catch(() => {});
+      friends.loadPendingRequests().catch(() => {});
+      useChatStore.getState().loadChats().catch(() => {});
+      useNotificationStore.getState().fetchNotifications().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
   const getComplementaryBackground = () => {
