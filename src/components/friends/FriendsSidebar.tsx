@@ -28,6 +28,7 @@ export function FriendsSidebar() {
     pendingRequests,
     currentUser,
     isLoading,
+    error,
     isSidebarOpen,
     isSettingsOpen,
     activeChatFriend,
@@ -248,6 +249,8 @@ export function FriendsSidebar() {
                 onlineFriends={onlineFriends.filter(f => f.username.toLowerCase().includes(searchQuery.toLowerCase()))}
                 offlineFriends={offlineFriends.filter(f => f.username.toLowerCase().includes(searchQuery.toLowerCase()))}
                 isLoading={isLoading}
+                loadFailed={isMobile && !!error}
+                onRetry={() => { loadFriends(true); loadPendingRequests(); }}
                 accentColor={accentColor.value}
               />
             ) : (
@@ -269,12 +272,16 @@ function FriendsTab({
   onlineFriends,
   offlineFriends,
   isLoading,
+  loadFailed,
+  onRetry,
   accentColor,
 }: {
   currentUser: ReturnType<typeof useFriendsStore.getState>["currentUser"];
   onlineFriends: ReturnType<typeof useFriendsStore.getState>["friends"];
   offlineFriends: ReturnType<typeof useFriendsStore.getState>["friends"];
   isLoading: boolean;
+  loadFailed: boolean;
+  onRetry: () => void;
   accentColor: string;
 }) {
   const { t } = useTranslation();
@@ -305,6 +312,28 @@ function FriendsTab({
         {[...Array(5)].map((_, i) => (
           <FriendSkeleton key={i} accentColor={accentColor} />
         ))}
+      </div>
+    );
+  }
+
+  if (loadFailed && onlineFriends.length === 0 && offlineFriends.length === 0) {
+    return (
+      <div className="py-12 px-6 text-center">
+        <div
+          className="w-16 h-16 mx-auto mb-4 rounded-xl flex items-center justify-center"
+          style={{ backgroundColor: `${accentColor}15`, border: `1px solid ${accentColor}40` }}
+        >
+          <Icon icon="solar:wi-fi-router-minimalistic-bold" className="w-8 h-8" style={{ color: accentColor }} />
+        </div>
+        <p className="text-white/50 text-xs font-minecraft">{t('friends.load_error_title')}</p>
+        <p className="text-white/30 text-sm mt-1 font-smallcaps">{t('friends.load_error_desc')}</p>
+        <button
+          onClick={onRetry}
+          className="mt-4 px-4 py-2 rounded-lg font-smallcaps text-sm text-white"
+          style={{ backgroundColor: `${accentColor}30`, border: `1px solid ${accentColor}60` }}
+        >
+          {t('friends.retry')}
+        </button>
       </div>
     );
   }

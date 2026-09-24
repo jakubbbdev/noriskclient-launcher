@@ -936,7 +936,7 @@ export function CapeBrowser(): JSX.Element {
                     />
                   ) : (
                     <SearchWithFilters
-                      placeholder={t('capes.searchVanillaCapePlaceholder')}
+                      placeholder={t(isMobile ? 'common.search' : 'capes.searchVanillaCapePlaceholder')}
                       searchValue={searchQuery}
                       onSearchChange={handleSearchChange}
                       onSearchEnter={handleSearchEnter}
