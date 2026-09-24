@@ -126,7 +126,7 @@ export function Modal({
       className={cn(
         "fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 backdrop-blur-md-anyos",
         isSheet
-          ? "p-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+          ? "p-0"
           : isMobile ? "p-3" : "p-4",
       )}
       onClick={handleBackdropClick}
@@ -138,7 +138,8 @@ export function Modal({
           variant === "3d" ? "shadow-2xl" : "",
           widthClasses[width],
           className,
-          isSheet && "!max-w-none !w-full !h-full !max-h-full !min-h-0 rounded-none border-0",
+          // Sheets pad inside so their background also fills the notch and home indicator areas
+          isSheet && "!max-w-none !w-full !h-full !max-h-full !min-h-0 rounded-none border-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
           isMobile && !isSheet && "max-h-[85dvh]",
         )}
         style={{

@@ -6,6 +6,7 @@ import { toast as hotToast, Toaster as HotToaster } from "react-hot-toast";
 import { gsap } from "gsap";
 import { useThemeStore } from "../../store/useThemeStore";
 import { usePlayerAvatar } from "../../hooks/usePlayerAvatar";
+import { isMobile } from "../../lib/platform";
 import {
   getBorderRadiusClass,
   createRadiusStyle,
@@ -85,12 +86,13 @@ function animateToast(id: string) {
       gsap.fromTo(
         toastElement,
         {
-          x: 50,
+          ...(isMobile ? { y: -20 } : { x: 50 }),
           opacity: 0,
           scale: 0.95,
         },
         {
           x: 0,
+          y: 0,
           opacity: 1,
           scale: 1,
           duration: 0.4,
@@ -131,9 +133,12 @@ export function GlobalToaster() {
   return (
     <div ref={toasterRef}>
       <HotToaster
-        position="bottom-right"
+        position={isMobile ? "top-center" : "bottom-right"}
+        containerStyle={isMobile ? { top: "calc(env(safe-area-inset-top) + 8px)" } : undefined}
         toastOptions={{
-          className: `${TOAST_BASE_CLASSES} ${borderRadiusClass}`,
+          // Phones: a tap fires mouseenter but never mouseleave, which pauses a toast forever.
+          // Let taps pass through instead.
+          className: `${TOAST_BASE_CLASSES} ${borderRadiusClass}${isMobile ? " !pointer-events-none" : ""}`,
           style: baseStyles,
           success: {
             style: {
