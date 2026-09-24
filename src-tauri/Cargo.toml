@@ -118,6 +118,20 @@ lto = true      # Enable link-time optimization
 opt-level = "z" # Optimize for size ("s" is another option)
 codegen-units = 1 # Reduce number of codegen units to increase optimizations
 
+# swift-rs builds the iOS Swift glue in release mode when DEBUG is false, and with
+# Xcode 27 that hides the exported symbols ("Undefined symbols: _register_plugin").
+# Debug info on these crates makes their build scripts see DEBUG=true, so the Swift
+# glue is built in debug mode (which links); the Rust code stays optimized.
+# Drop this once swift-rs handles Xcode 27 release builds.
+[profile.release.package.tauri]
+debug = "line-tables-only"
+[profile.release.package.tauri-plugin-dialog]
+debug = "line-tables-only"
+[profile.release.package.tauri-plugin-opener]
+debug = "line-tables-only"
+[profile.release.package.tauri-plugin-clipboard-manager]
+debug = "line-tables-only"
+
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2.9.0"
 
