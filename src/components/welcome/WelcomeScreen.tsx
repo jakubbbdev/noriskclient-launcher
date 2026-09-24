@@ -75,7 +75,7 @@ export function WelcomeScreen() {
     <div
       ref={rootRef}
       onMouseMove={onPointerMove}
-      className="welcome-screen fixed inset-0 z-[900] flex bg-[#08060d] select-none"
+      className={`welcome-screen fixed inset-0 z-[900] flex bg-[#08060d] select-none${isMobile ? " pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]" : ""}`}
       style={{ ["--px" as string]: 0, ["--py" as string]: 0 }}
     >
       <style>{`

@@ -125,7 +125,9 @@ export function Modal({
       ref={modalRef}
       className={cn(
         "fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 backdrop-blur-md-anyos",
-        isSheet ? "p-0" : isMobile ? "p-3" : "p-4",
+        isSheet
+          ? "p-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+          : isMobile ? "p-3" : "p-4",
       )}
       onClick={handleBackdropClick}
     >

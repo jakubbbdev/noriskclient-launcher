@@ -89,7 +89,7 @@ export function FriendsSidebar() {
         className={cn(
           "fixed top-0 right-0 h-full z-50 flex transition-transform duration-300 ease-out",
           // Phones: full screen, chat/settings replace the list instead of opening beside it
-          isMobile && "w-full pt-[env(safe-area-inset-top)]",
+          isMobile && "w-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
           isSidebarOpen ? "translate-x-0" : isMobile ? "translate-x-[calc(100%+32px)]" : "translate-x-full"
         )}
       >
