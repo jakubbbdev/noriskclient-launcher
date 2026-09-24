@@ -235,6 +235,8 @@ pub fn run() {
             }
         }));
     let builder = builder.plugin(tauri_plugin_dialog::init());
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_haptics::init());
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_deep_link::init());
     builder

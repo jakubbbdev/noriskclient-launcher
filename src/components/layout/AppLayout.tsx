@@ -8,6 +8,7 @@ import { Icon } from "@iconify/react";
 import { VerticalNavbar } from ".././navigation/VerticalNavbar";
 import { MobileBottomNav } from ".././navigation/MobileBottomNav";
 import { isMobile } from "../../lib/platform";
+import { cn } from "../../lib/utils";
 import { UserProfileBar } from ".././header/UserProfileBar";
 import { NavigationHistory } from "../ui/NavigationHistory";
 import { useThemeStore } from "../../store/useThemeStore";
@@ -401,7 +402,11 @@ export function AppLayout({
           {/* Snow overlay - independent of theme/background */}
           {shouldShowEffects && isSnowEnabled && <Snowfall />}
 
-          <div className="relative z-10 h-full overflow-hidden custom-scrollbar">
+          <div
+            // Phones: fade each tab in when switching
+            key={isMobile ? activeTab : undefined}
+            className={cn("relative z-10 h-full overflow-hidden custom-scrollbar", isMobile && "animate-in fade-in duration-200")}
+          >
             {children}
           </div>
         </div>

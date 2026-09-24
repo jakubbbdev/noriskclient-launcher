@@ -3,6 +3,7 @@
 import { Icon } from "@iconify/react";
 import { cn } from "../../lib/utils";
 import { useThemeStore } from "../../store/useThemeStore";
+import { tapHaptic } from "../../lib/haptics";
 
 interface NavItem {
   id: string;
@@ -44,7 +45,10 @@ export function MobileBottomNav({
         return (
           <button
             key={item.id}
-            onClick={() => onItemClick?.(item.id)}
+            onClick={() => {
+              tapHaptic();
+              onItemClick?.(item.id);
+            }}
             aria-label={item.label}
             className={cn(
               "flex flex-col items-center justify-center gap-0.5 flex-1 min-w-0",

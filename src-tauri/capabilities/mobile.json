@@ -12,6 +12,7 @@
   "permissions": [
     "core:default",
     "opener:default",
+    "haptics:allow-impact-feedback",
     "core:window:default",
     "core:window:allow-start-dragging",
     "core:window:allow-minimize",

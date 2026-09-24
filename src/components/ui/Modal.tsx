@@ -141,6 +141,7 @@ export function Modal({
           // Sheets pad inside so their background also fills the home indicator area
           isSheet && "!max-w-none !w-full !h-full !max-h-full !min-h-0 rounded-none border-0 pb-[env(safe-area-inset-bottom)]",
           isMobile && !isSheet && "max-h-[85dvh]",
+          isSheet && "animate-in slide-in-from-bottom-8 fade-in duration-200",
         )}
         style={{
           backgroundColor: `${accentColor.value}20`,

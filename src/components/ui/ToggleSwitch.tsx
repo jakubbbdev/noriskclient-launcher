@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useThemeStore } from "../../store/useThemeStore";
 import { cn } from "../../lib/utils";
+import { tapHaptic } from "../../lib/haptics";
 import { useEntranceAnimation } from "../../hooks/useEntranceAnimation";
 import { gsap } from "gsap";
 
@@ -200,7 +201,11 @@ export function ToggleSwitch({
         type="checkbox"
         className="hidden"
         checked={checked}
-        onChange={() => !disabled && onChange(!checked)}
+        onChange={() => {
+          if (disabled) return;
+          tapHaptic();
+          onChange(!checked);
+        }}
         disabled={disabled}
       />
     </label>

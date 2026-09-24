@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { NewsSection } from "../news/NewsSection";
 import { ErrorMessage } from "../ui/ErrorMessage";
 import { useMinecraftAuthStore } from "../../store/minecraft-auth-store";
@@ -24,6 +24,9 @@ import { setDiscordState } from "../../utils/discordRpc";
 import { useTranslation } from "react-i18next";
 import { PlayerRig } from "../launcher/PlayerRig";
 import { isMobile } from "../../lib/platform";
+import { usePullToRefresh, PullToRefreshIndicator } from "../../hooks/usePullToRefresh";
+import { fetchNewsAndChangelogs } from "../../services/nrc-service";
+import { useNewsStore } from "../../store/useNewsStore";
 
 export function PlayTab() {
   const { t } = useTranslation();
@@ -67,12 +70,18 @@ export function PlayTab() {
     profileId: profile.id,
   }));
 
+  const homeRef = useRef<HTMLDivElement>(null);
+  const homePull = usePullToRefresh(homeRef, () =>
+    fetchNewsAndChangelogs().then((posts) => useNewsStore.getState().setPosts(posts)),
+  );
+
   // promo-outline shader settings for the 3D player preview
   const outline = { strength: 4, thickness: 3, sensitivity: 0.1 };
 
   if (isMobile) {
     return (
-      <div className="h-full overflow-y-auto overflow-x-hidden custom-scrollbar">
+      <div ref={homeRef} className="h-full overflow-y-auto overflow-x-hidden custom-scrollbar">
+        <PullToRefreshIndicator {...homePull} />
         <div className="relative flex flex-col items-center overflow-hidden pt-2">
           <PlayerRig
             playerName={activeAccount?.minecraft_username || activeAccount?.username}

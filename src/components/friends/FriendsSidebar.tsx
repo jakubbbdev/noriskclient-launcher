@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { Icon } from "@iconify/react";
 import { useTranslation } from "react-i18next";
 import { useFriendsStore, FriendsFriendUser } from "../../store/friends-store";
@@ -19,6 +19,7 @@ type FriendListRow =
 
 type TabType = "friends" | "requests";
 import { isMobile } from "../../lib/platform";
+import { usePullToRefresh, PullToRefreshIndicator } from "../../hooks/usePullToRefresh";
 
 export function FriendsSidebar() {
   const { t } = useTranslation();
@@ -43,6 +44,8 @@ export function FriendsSidebar() {
   const { accentColor } = useThemeStore();
   const [activeTab, setActiveTab] = useState<TabType>("friends");
   const [searchQuery, setSearchQuery] = useState("");
+  const listRef = useRef<HTMLDivElement>(null);
+  const listPull = usePullToRefresh(listRef, () => Promise.all([loadFriends(true), loadPendingRequests()]));
 
   useEffect(() => {
     if (isSidebarOpen) {
@@ -239,7 +242,8 @@ export function FriendsSidebar() {
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
+          <div ref={listRef} className="flex-1 overflow-y-auto custom-scrollbar">
+            <PullToRefreshIndicator {...listPull} />
             {activeTab === "friends" ? (
               <FriendsTab
                 currentUser={currentUser}

@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Touch screens: no grey tap flash; pressed buttons darken briefly instead */
+@media (hover: none) and (pointer: coarse) {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:not(:disabled):active,
+  [role="button"]:active {
+    filter: brightness(0.8);
+  }
+}
+
 @font-face {
     font-family: "SmallCaps";
     src: url("/fonts/smallcaps.ttf") format("truetype");

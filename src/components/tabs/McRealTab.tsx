@@ -8,6 +8,7 @@ import { useMinecraftAuthStore } from "../../store/minecraft-auth-store";
 import { useThemeStore } from "../../store/useThemeStore";
 import { isMobile } from "../../lib/platform";
 import { McRealPostCard } from "../mcreal/McRealPostCard";
+import { usePullToRefresh, PullToRefreshIndicator } from "../../hooks/usePullToRefresh";
 import type { McRealSort } from "../../types/mcreal";
 
 const TABS: { id: McRealFeedTab; labelKey: string }[] = [
@@ -45,6 +46,8 @@ export function McRealTab() {
     refreshTodayPost,
   } = useMcRealStore();
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const feedRef = useRef<HTMLDivElement>(null);
+  const feedPull = usePullToRefresh(feedRef, () => Promise.all([loadFeed(true), refreshTodayPost()]));
 
   useEffect(() => {
     if (!activeAccount) return;
@@ -147,7 +150,8 @@ export function McRealTab() {
       )}
 
       {/* Feed: single column on mobile, grid on desktop */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
+      <div ref={feedRef} className="flex-1 overflow-y-auto custom-scrollbar">
+        <PullToRefreshIndicator {...feedPull} />
         <div
           className={`mx-auto ${
             isMobile
