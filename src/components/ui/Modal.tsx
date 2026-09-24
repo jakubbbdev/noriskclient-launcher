@@ -138,8 +138,8 @@ export function Modal({
           variant === "3d" ? "shadow-2xl" : "",
           widthClasses[width],
           className,
-          // Sheets pad inside so their background also fills the notch and home indicator areas
-          isSheet && "!max-w-none !w-full !h-full !max-h-full !min-h-0 rounded-none border-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
+          // Sheets pad inside so their background also fills the home indicator area
+          isSheet && "!max-w-none !w-full !h-full !max-h-full !min-h-0 rounded-none border-0 pb-[env(safe-area-inset-bottom)]",
           isMobile && !isSheet && "max-h-[85dvh]",
         )}
         style={{
@@ -161,6 +161,8 @@ export function Modal({
           className={cn(
             "flex items-center justify-between border-b-2 flex-shrink-0",
             isMobile ? "px-4 py-3" : "px-6 py-4",
+            // Sheets: the header runs up behind the notch, like the app header
+            isSheet && "pt-[calc(env(safe-area-inset-top)_+_0.75rem)]",
           )}
           style={{
             borderColor: `${accentColor.value}60`,
