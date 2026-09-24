@@ -345,7 +345,8 @@ export function AppLayout({
   return (
     <div
       ref={launcherRef}
-      className={`${isMobile ? "h-[100dvh]" : "h-screen"} w-full bg-black/50 backdrop-blur-lg border-2 overflow-hidden relative flex shadow-[0_0_25px_rgba(0,0,0,0.4)] ${isMobile ? "flex-col" : ""}`}
+      // Phones: no window frame; its edge glow would run behind the notch and round screen corners.
+      className={`${isMobile ? "h-[100dvh] flex-col" : "h-screen border-2 shadow-[0_0_25px_rgba(0,0,0,0.4)]"} w-full bg-black/50 backdrop-blur-lg overflow-hidden relative flex`}
       style={{
         backgroundColor: backgroundColor,
         backgroundSize: "cover",
@@ -353,11 +354,13 @@ export function AppLayout({
         backgroundImage: isCustomMediaVisible 
           ? `linear-gradient(to bottom right, ${getComplementaryBackgroundWithAlpha(0.3)}, rgba(0,0,0,0.5))`
           : `linear-gradient(to bottom right, ${backgroundColor}, rgba(0,0,0,0.9))`,
-        borderColor: `${themeAccentColor.value}30`,
-        boxShadow: `0 0 15px ${themeAccentColor.value}30, inset 0 0 10px ${themeAccentColor.value}20`,
+        ...(!isMobile && {
+          borderColor: `${themeAccentColor.value}30`,
+          boxShadow: `0 0 15px ${themeAccentColor.value}30, inset 0 0 10px ${themeAccentColor.value}20`,
+        }),
       }}
     >
-      <BorderGlowEffects accentColor={themeAccentColor.value} />
+      {!isMobile && <BorderGlowEffects accentColor={themeAccentColor.value} />}
 
       {!isMobile && (
         <VerticalNavbar
