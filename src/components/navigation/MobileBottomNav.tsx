@@ -30,7 +30,8 @@ export function MobileBottomNav({
     <nav
       className={cn(
         "flex-shrink-0 flex items-stretch justify-around backdrop-blur-lg z-20",
-        "h-16 pb-[env(safe-area-inset-bottom)]",
+        // box-content: the home-indicator inset adds to the 4rem bar instead of eating into it
+        "box-content h-16 pb-[env(safe-area-inset-bottom)]",
         className,
       )}
       style={{
