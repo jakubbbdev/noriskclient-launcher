@@ -10,7 +10,6 @@ import i18n from "./i18n/i18n";
 import "./styles/globals.css";
 import { isMobile } from "./lib/platform";
 
-// iOS only applies :active (the tap feedback in globals.css) when a touch listener exists
 if (isMobile) document.addEventListener("touchstart", () => {}, { passive: true });
 
 const isOverlay = (() => {

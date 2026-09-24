@@ -29,9 +29,6 @@ export const PLAYER_RIG_HEIGHT = 450;
 
 const CANVAS_WIDTH = 1040;
 const CANVAS_HEIGHT = 860;
-// Phones clip the rig to the screen width anyway. The camera keeps its vertical field of view,
-// so a narrower canvas only crops the invisible sides and saves ~60% of the pixels per frame.
-// ponytail: width read once at load; fine while the app is portrait-only.
 const RIG_CANVAS_WIDTH = isMobile ? Math.min(CANVAS_WIDTH, window.innerWidth) : CANVAS_WIDTH;
 
 const canvasStyle: React.CSSProperties = {

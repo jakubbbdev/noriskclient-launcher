@@ -350,7 +350,6 @@ function CapeItemDisplay({
           <h3
             className={cn(
               "font-minecraft text-white text-base max-w-full normal-case",
-              // Phones: long names wrap instead of getting cut off
               isMobile ? "[overflow-wrap:anywhere]" : "whitespace-nowrap overflow-hidden text-ellipsis",
               isNoCape && !isVanilla ? "mt-2.5" : "mb-1"
             )}

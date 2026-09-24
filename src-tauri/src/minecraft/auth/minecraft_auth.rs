@@ -815,7 +815,6 @@ impl MinecraftAuthStore {
                 .add_component(HWIDComponent::SystemID)
                 .build("NRC")
                 .map_err(|e| AppError::Other(format!("HWID Error {:?}", e)))?;
-            // No hardware id on mobile: a random id persisted per install stands in for it.
             #[cfg(mobile)]
             let hwid = mobile_install_id().await?;
 

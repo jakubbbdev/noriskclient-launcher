@@ -85,7 +85,6 @@ export function AppLayout({
     if (!isMobile) void refreshClips();
   }, [refreshClips]);
 
-  // Mobile ships no game/profile management: only the social side of the launcher.
   const mobileNavItems = [
     { id: "play", icon: "solar:home-2-bold", label: t("nav.home") },
     { id: "friends", icon: "solar:users-group-rounded-bold", label: t("nav.friends") },
@@ -132,7 +131,6 @@ export function AppLayout({
     initFriends();
   }, []);
 
-  // Phones: nothing is pushed live, so catch up when the app comes back to the foreground.
   useEffect(() => {
     if (!isMobile) return;
     const onVisible = () => {
@@ -362,7 +360,6 @@ export function AppLayout({
   return (
     <div
       ref={launcherRef}
-      // Phones: no window frame; its edge glow would run behind the notch and round screen corners.
       className={`${isMobile ? "h-[100dvh] flex-col" : "h-screen border-2 shadow-[0_0_25px_rgba(0,0,0,0.4)]"} w-full bg-black/50 backdrop-blur-lg overflow-hidden relative flex`}
       style={{
         backgroundColor: backgroundColor,
@@ -403,7 +400,6 @@ export function AppLayout({
           {shouldShowEffects && isSnowEnabled && <Snowfall />}
 
           <div
-            // Phones: fade each tab in when switching
             key={isMobile ? activeTab : undefined}
             className={cn("relative z-10 h-full overflow-hidden custom-scrollbar", isMobile && "animate-in fade-in duration-200")}
           >
@@ -544,7 +540,6 @@ function HeaderBar({ minimizeRef, maximizeRef, closeRef }: HeaderBarProps) {
   };
 
     fetchVersion();
-    // App stores ship mobile updates; the in-app updater only exists on desktop.
     if (isMobile) return;
     checkForUpdates();
 

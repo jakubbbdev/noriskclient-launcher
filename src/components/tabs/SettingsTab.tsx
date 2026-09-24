@@ -27,7 +27,6 @@ import { useClipSettingsSync } from "../../hooks/useClipSettingsSync";
 import { isMacOS, supportsClips } from "../../utils/platform";
 import { isMobile } from "../../lib/platform";
 
-// Build-time constant, so the hook call order never changes at runtime.
 const useClipSync = isMobile ? () => {} : useClipSettingsSync;
 
 type SettingsTabId = "general" | "appearance" | "clips" | "advanced" | "debug";

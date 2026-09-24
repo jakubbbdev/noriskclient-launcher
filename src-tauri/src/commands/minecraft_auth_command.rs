@@ -40,7 +40,6 @@ pub async fn begin_login<R: Runtime>(
 ) -> Result<Option<Credentials>, CommandError> {
     let state = State::get().await?;
     let config = state.config_manager.get_config().await;
-    // Mobile has no second window, so it always takes the system-browser flow.
     #[cfg(desktop)]
     if !(updater_utils::is_flatpak() || config.use_browser_based_login) {
         return begin_webview_login(app).await;
@@ -49,7 +48,7 @@ pub async fn begin_login<R: Runtime>(
     let _ = config;
 
     {
-        // Flatpak/mobile: Use external browser with local HTTP server
+        // Flatpak: Use external browser with local HTTP server
         info!("[Login] Using external browser flow (Flatpak detected)");
 
         // Find an available port (try 25585 first, then random)

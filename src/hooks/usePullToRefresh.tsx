@@ -6,10 +6,6 @@ import { tapHaptic } from "../lib/haptics";
 const THRESHOLD = 64;
 const MAX_PULL = 96;
 
-/**
- * Pull-to-refresh on a scroll container (phones only). Render <PullToRefreshIndicator>
- * as the container's first child: it grows with the pull and pushes the content down.
- */
 export function usePullToRefresh(
   ref: RefObject<HTMLElement>,
   onRefresh: () => Promise<unknown> | void,
@@ -28,7 +24,6 @@ export function usePullToRefresh(
     let distance = 0;
     let busy = false;
 
-    // At the top only if every scroller between the finger and `el` (e.g. a virtual list) is too
     const atTop = () => {
       for (let n = startTarget; n && n !== el.parentNode; n = n.parentNode) {
         if (n instanceof HTMLElement && n.scrollTop > 0) return false;
@@ -51,7 +46,7 @@ export function usePullToRefresh(
         }
         return;
       }
-      e.preventDefault(); // keep the page from scrolling or bouncing while pulling
+      e.preventDefault();
       distance = Math.min(dy * 0.5, MAX_PULL);
       setPull(distance);
     };
@@ -97,7 +92,6 @@ export function PullToRefreshIndicator({ pull, refreshing }: { pull: number; ref
       className="flex items-end justify-center overflow-hidden text-white/70"
       style={{
         height: pull,
-        // snap back smoothly once the finger lets go
         transition: refreshing || pull === 0 ? "height 200ms ease-out" : undefined,
       }}
     >

@@ -34,7 +34,6 @@ export function SettingRow({
       className={cn(
         "flex gap-4 py-3 border-b border-white/10 last:border-b-0",
         vertical ? "flex-col" : "items-center justify-between",
-        // Phones: a wide control drops below its label instead of overlapping it
         isMobile && !vertical && "flex-wrap gap-y-2",
         disabled && "opacity-50",
         className,

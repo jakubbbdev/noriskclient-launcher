@@ -136,8 +136,6 @@ export function GlobalToaster() {
         position={isMobile ? "top-center" : "bottom-right"}
         containerStyle={isMobile ? { top: "calc(env(safe-area-inset-top) + 8px)" } : undefined}
         toastOptions={{
-          // Phones: a tap fires mouseenter but never mouseleave, which pauses a toast forever.
-          // Let taps pass through instead.
           className: `${TOAST_BASE_CLASSES} ${borderRadiusClass}${isMobile ? " !pointer-events-none" : ""}`,
           style: baseStyles,
           success: {

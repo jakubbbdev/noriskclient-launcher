@@ -1,7 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: ["class"],
-  // hover: styles only where a real hover exists, so they don't stick after a tap on phones
   future: { hoverOnlyWhenSupported: true },
   content: [
     "./*.html",

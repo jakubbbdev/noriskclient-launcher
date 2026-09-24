@@ -104,7 +104,6 @@ export function Modal({
     full: "max-w-[95vw] w-full",
   };
 
-  // Phones: big dialogs (settings, wizards) take the whole screen.
   const isSheet = isMobile && (width === "lg" || width === "xl" || width === "full");
 
   const getBorderClasses = () => {
@@ -138,7 +137,6 @@ export function Modal({
           variant === "3d" ? "shadow-2xl" : "",
           widthClasses[width],
           className,
-          // Sheets pad inside so their background also fills the home indicator area
           isSheet && "!max-w-none !w-full !h-full !max-h-full !min-h-0 rounded-none border-0 pb-[env(safe-area-inset-bottom)]",
           isMobile && !isSheet && "max-h-[85dvh]",
           isSheet && "animate-in slide-in-from-bottom-8 fade-in duration-200",
@@ -162,7 +160,6 @@ export function Modal({
           className={cn(
             "flex items-center justify-between border-b-2 flex-shrink-0",
             isMobile ? "px-4 py-3" : "px-6 py-4",
-            // Sheets: the header runs up behind the notch, like the app header
             isSheet && "pt-[calc(env(safe-area-inset-top)_+_0.75rem)]",
           )}
           style={{

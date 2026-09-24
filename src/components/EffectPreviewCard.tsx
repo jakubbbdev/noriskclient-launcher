@@ -147,7 +147,6 @@ export default function EffectPreviewCard({
         </div>
 
         <div className="mt-auto text-center">
-          {/* Phones fit three cards per row: long translated names must wrap, not spill */}
           <h5 className={isMobile ? "font-smallcaps text-xs leading-tight text-white [overflow-wrap:anywhere]" : "font-smallcaps text-sm text-white"}>
             {name}
           </h5>

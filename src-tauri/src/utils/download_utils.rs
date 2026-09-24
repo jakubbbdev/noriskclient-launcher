@@ -2,7 +2,6 @@ use crate::config::HTTP_CLIENT;
 use crate::error::{AppError, Result};
 #[cfg(desktop)]
 use crate::minecraft::launch::launch_summary::DownloadStats;
-// The launch module is desktop-only; its download counters only need std.
 #[cfg(mobile)]
 #[allow(dead_code)]
 #[path = "../minecraft/launch/launch_summary.rs"]

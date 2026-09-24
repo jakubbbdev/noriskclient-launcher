@@ -22,7 +22,6 @@ pub mod file_utils; // Utilities for file operations like reading archives
 #[cfg(desktop)]
 pub mod export_utils;
 pub mod hash_utils;
-// Clips/capture: desktop only, not part of the mobile app.
 #[cfg(desktop)]
 pub mod capture_runtime;
 #[cfg(desktop)]

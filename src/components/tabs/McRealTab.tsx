@@ -93,7 +93,6 @@ export function McRealTab() {
             mcreal
           </h2>
         )}
-        {/* Phones: tabs get their own full-width row so longer translations never collide with the sort select */}
         <div className={isMobile ? "flex items-center gap-1 w-full [&>*]:flex-1" : "flex items-center gap-1 flex-1 min-w-0"}>
           {TABS.map((tab) => (
             <button

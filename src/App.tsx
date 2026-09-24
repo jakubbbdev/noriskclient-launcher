@@ -319,7 +319,6 @@ export function App() {
     };
   }, [showModal, hideModal, t]);
 
-  // Packs, versions and blocked-mod lists only matter for profiles and launching.
   useEffect(() => {
     if (!isMobile) refreshNrcDataOnMount();
   }, []);
@@ -331,7 +330,6 @@ export function App() {
     (async () => {
       try {
         const launcherVersion = await invoke<string>('get_app_version').catch(() => 'unknown');
-        // Phones have no Java; the event then reports java_version "unknown".
         const javaInfo: any = isMobile ? null : await invoke('get_java_info_command').catch(() => null);
         const osInfo = await invoke<{ os: string; os_version: string; arch: string }>(
           'get_system_os_info',
@@ -361,7 +359,6 @@ export function App() {
   }, [activeAccount, fetchNotifications]);
 
   useEffect(() => {
-    // The tester queue opens a separate window that only exists on desktop.
     if (!activeAccount || isMobile) return;
     let cancelled = false;
     (async () => {
@@ -556,7 +553,6 @@ export function App() {
     incrementLaunchCount();
   }, [incrementLaunchCount]);
 
-  // Android back button: close the top-most overlay, then go home, then leave.
   useEffect(() => {
     if (!isMobile) return;
     const listener = onBackButtonPress(() => {
@@ -575,7 +571,6 @@ export function App() {
   }, [navigate]);
 
   const handleNavChange = async (tabId: string) => {
-    // Friends live in the slide-in sidebar, on mobile it gets its own nav entry.
     if (tabId === "friends") {
       useFriendsStore.getState().toggleSidebar();
       return;

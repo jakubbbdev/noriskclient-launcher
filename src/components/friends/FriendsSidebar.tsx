@@ -91,7 +91,6 @@ export function FriendsSidebar() {
       <div
         className={cn(
           "fixed top-0 right-0 h-full z-50 flex transition-transform duration-300 ease-out",
-          // Phones: full screen, chat/settings replace the list instead of opening beside it
           isMobile && "w-full",
           isSidebarOpen ? "translate-x-0" : isMobile ? "translate-x-[calc(100%+32px)]" : "translate-x-full"
         )}
@@ -100,7 +99,6 @@ export function FriendsSidebar() {
           className={cn(
             "h-full flex flex-col transition-all duration-300 ease-out overflow-hidden backdrop-blur-md",
             (activeChatFriend || isSettingsOpen) ? (isMobile ? "w-full opacity-100" : "w-[380px] opacity-100") : "w-0 opacity-0",
-            // Pad inside the panels so their background also fills the notch and home indicator areas
             isMobile && "pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
           )}
           style={{

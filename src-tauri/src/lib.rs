@@ -1,4 +1,3 @@
-// Mobile builds leave the launcher out; the desktop build still reports these.
 #![cfg_attr(mobile, allow(unused_imports, unused_macros, dead_code))]
 
 #[macro_use]
@@ -173,9 +172,6 @@ use commands::friends_command::{
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Android has no HOME/XDG env, which LAUNCHER_DIRECTORY (directories::ProjectDirs)
-    // needs. Logging resolves it before any AppHandle exists, so set it up front.
-    // TODO: hardcoded user-0 data dir, won't work in Android work profiles.
     #[cfg(target_os = "android")]
     {
         let base = "/data/data/gg.norisk.NoRiskClientLauncherV3";
@@ -185,11 +181,8 @@ pub fn run() {
         std::env::set_var("XDG_CACHE_HOME", format!("{base}/cache"));
     }
 
-    // Own the tokio runtime (instead of #[tokio::main]) so the same entry point
-    // serves the desktop binary and the mobile library.
     let runtime = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     tauri::async_runtime::set(runtime.handle().clone());
-    // Keep the runtime entered so `tokio::spawn` from event callbacks works.
     let _runtime_guard = runtime.enter();
 
     runtime.block_on(async {
@@ -506,8 +499,6 @@ pub fn run() {
                 #[cfg(windows)]
                 commands::clip_commands::start_on_launch(state_init_app_handle.clone());
 
-                // Updater + showing the (initially hidden) main window only exist on desktop;
-                // on mobile the OS activity owns the single window.
                 #[cfg(desktop)]
                 {
                 trace!("Attempting to retrieve launcher configuration for update check...");

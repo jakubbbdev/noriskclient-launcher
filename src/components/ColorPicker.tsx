@@ -63,7 +63,6 @@ export function ColorPicker({
 
   return (
     <div className="space-y-4">
-      {/* Phones: 16 swatches fill two even rows across the full width */}
       <div className={isMobile ? "grid grid-cols-8 gap-2 p-1" : "flex flex-wrap gap-3 p-1"}>
         {Object.values(ACCENT_COLORS).map((color) => (
           <button

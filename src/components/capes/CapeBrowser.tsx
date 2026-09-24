@@ -954,7 +954,6 @@ export function CapeBrowser(): JSX.Element {
                 <div className={isMobile ? "flex [&>*]:flex-1 [&>*]:justify-center" : "flex items-center gap-3"}>
                   {activeAccount && (
                     <>
-                      {/* The template download opens a file explorer: desktop only */}
                       {!isMobile && (
                       <div className="relative" ref={templateMenuRef}>
                         <button

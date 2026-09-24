@@ -107,7 +107,6 @@ export function ColorPickerModal({ onClose, onColorSelected }: ColorPickerModalP
     setHex(newHex);
   }, [hsv]);
 
-  // Pointer events cover mouse and touch; capture keeps a drag going outside the element
   const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
   const pickSaturation = (e: React.PointerEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();

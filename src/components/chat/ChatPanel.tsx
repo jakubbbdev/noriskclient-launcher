@@ -182,9 +182,6 @@ export function ChatPanel({ friend }: ChatPanelProps) {
     };
   }, [chat?._id]);
 
-  // Phones: the friends WebSocket is off, so fetch the newest page while the chat is open
-  // and the app is in the foreground.
-  // ponytail: 5 s polling; drop this once the WebSocket is re-enabled.
   useEffect(() => {
     if (!isMobile || !chat?._id) return;
     const chatId = chat._id;

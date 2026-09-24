@@ -16,7 +16,6 @@ interface ImportMetaEnv {
   readonly DEV: boolean;
   readonly PROD: boolean;
   readonly SSR: boolean;
-  /** Set by the Tauri CLI: windows | macos | linux | android | ios */
   readonly TAURI_ENV_PLATFORM?: string;
 }
 

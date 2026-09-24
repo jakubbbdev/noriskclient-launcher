@@ -74,7 +74,6 @@ export const router = createHashRouter([
         path: "mcreal",
         element: <McRealTab />,
       },
-      // Clips are desktop-only; keeping the route out drops the page from mobile bundles.
       ...(isMobile ? [] : [{ path: "clips", element: <ClipsPage /> }]),
       // DISABLED: Advent Calendar (seasonal feature)
       // {

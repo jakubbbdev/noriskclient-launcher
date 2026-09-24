@@ -643,8 +643,6 @@ pub fn create_delegate_class() {
 
       // Dynamically set the delegate class name
       config.setDelegateClass(Some(super::scene::TaoSceneDelegate::class()));
-      // Backport of tao#1245: hand ownership to the autorelease pool so the
-      // configuration survives until UIKit retains it (release builds crashed).
       Retained::autorelease_ptr(config) as _
     }
   }

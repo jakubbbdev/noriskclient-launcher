@@ -19,7 +19,6 @@ interface SettingsSectionProps {
   bodyClassName?: string;
 }
 
-// Phones only get the settings that do not touch the game/launcher install.
 export const MOBILE_SETTINGS_SECTIONS = new Set([
   "language", "accent", "theme", "font", "background", "custom-background",
 ]);

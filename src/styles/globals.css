@@ -2,7 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Touch screens: no grey tap flash; pressed buttons darken briefly instead */
 @media (hover: none) and (pointer: coarse) {
   * {
     -webkit-tap-highlight-color: transparent;
