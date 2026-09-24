@@ -25,6 +25,10 @@ import { setDiscordState } from "../../utils/discordRpc";
 import { parseErrorMessage } from "../../utils/error-utils";
 import { useClipSettingsSync } from "../../hooks/useClipSettingsSync";
 import { isMacOS, supportsClips } from "../../utils/platform";
+import { isMobile } from "../../lib/platform";
+
+// Build-time constant, so the hook call order never changes at runtime.
+const useClipSync = isMobile ? () => {} : useClipSettingsSync;
 
 type SettingsTabId = "general" | "appearance" | "clips" | "advanced" | "debug";
 
@@ -47,7 +51,7 @@ export function SettingsTab({ onClose }: SettingsTabProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
-  useClipSettingsSync(config, saving);
+  useClipSync(config, saving);
   const requested = useSettingsModalStore.getState().tab;
   const [activeTab, setActiveTab] = useState<SettingsTabId>(() =>
     SETTINGS_TAB_IDS.includes(requested as SettingsTabId)
@@ -125,7 +129,11 @@ export function SettingsTab({ onClose }: SettingsTabProps) {
     { id: "debug", label: t("settings.tabs.debug"), icon: "solar:bug-bold", children: sectionDefs.debug },
   ];
 
-  const tabConfig = onlyTab ? allTabs.filter((tab) => tab.id === onlyTab) : allTabs;
+  const tabConfig = onlyTab
+    ? allTabs.filter((tab) => tab.id === onlyTab)
+    : isMobile
+      ? allTabs.filter((tab) => tab.id === "general" || tab.id === "appearance")
+      : allTabs;
 
   const selectTab = (id: SettingsTabId) => {
     setSidebarSearch("");
@@ -311,7 +319,7 @@ export function SettingsTab({ onClose }: SettingsTabProps) {
     const bodyOf: Partial<Record<SettingsTabId, ReactNode>> = {
       general: <GeneralTab />,
       appearance: <AppearanceTab />,
-      clips: <ClipsTab />,
+      clips: isMobile ? null : <ClipsTab />,
       advanced: <AdvancedTab />,
     };
 
@@ -345,7 +353,7 @@ export function SettingsTab({ onClose }: SettingsTabProps) {
       onClose={onClose}
       width="xl"
       className="!max-w-6xl h-[85vh] min-h-[600px] flex flex-col"
-      headerActions={
+      headerActions={isMobile ? undefined :
         <ActionButton
           id="open-directory"
           label={t("settings.open_directory")}
@@ -364,6 +372,39 @@ export function SettingsTab({ onClose }: SettingsTabProps) {
         />
       }
     >
+      {isMobile ? (
+        <div className="flex flex-col h-full min-h-0">
+          <div
+            className="flex gap-1 mx-3 mt-3 mb-3 p-1 rounded-xl border flex-shrink-0"
+            style={{ borderColor: `${accentColor.value}30`, backgroundColor: `${accentColor.value}10` }}
+          >
+            {tabConfig.map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg border-0 outline-none whitespace-nowrap font-smallcaps text-base transition-colors",
+                    isActive ? "text-white" : "bg-transparent text-white/60",
+                  )}
+                  style={isActive ? { backgroundColor: `${accentColor.value}40` } : undefined}
+                  onClick={() => selectTab(tab.id)}
+                >
+                  <Icon icon={tab.icon} className="w-5 h-5" style={{ color: isActive ? "white" : undefined }} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+          <div ref={contentRef} className="flex-1 min-h-0 px-3 pb-6 overflow-y-auto overflow-x-hidden custom-scrollbar">
+            <SettingsConfigProvider value={{ config, tempConfig, setTempConfig, saving }}>
+              <SettingsSearchContext.Provider value="">
+                {renderTabContent()}
+              </SettingsSearchContext.Provider>
+            </SettingsConfigProvider>
+          </div>
+        </div>
+      ) : (
       <div className="flex h-full p-4 gap-2">
         <div className="w-64 flex flex-col flex-shrink-0">
           <div className="px-1 pb-3">
@@ -453,6 +494,7 @@ export function SettingsTab({ onClose }: SettingsTabProps) {
           </div>
         </div>
       </div>
+      )}
     </Modal>
   );
 }

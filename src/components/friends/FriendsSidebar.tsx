@@ -18,6 +18,7 @@ type FriendListRow =
   | { type: "friend"; friend: FriendsFriendUser };
 
 type TabType = "friends" | "requests";
+import { isMobile } from "../../lib/platform";
 
 export function FriendsSidebar() {
   const { t } = useTranslation();
@@ -87,13 +88,15 @@ export function FriendsSidebar() {
       <div
         className={cn(
           "fixed top-0 right-0 h-full z-50 flex transition-transform duration-300 ease-out",
-          isSidebarOpen ? "translate-x-0" : "translate-x-full"
+          // Phones: full screen, chat/settings replace the list instead of opening beside it
+          isMobile && "w-full pt-[env(safe-area-inset-top)]",
+          isSidebarOpen ? "translate-x-0" : isMobile ? "translate-x-[calc(100%+32px)]" : "translate-x-full"
         )}
       >
         <div
           className={cn(
             "h-full flex flex-col transition-all duration-300 ease-out overflow-hidden backdrop-blur-md",
-            (activeChatFriend || isSettingsOpen) ? "w-[380px] opacity-100" : "w-0 opacity-0"
+            (activeChatFriend || isSettingsOpen) ? (isMobile ? "w-full opacity-100" : "w-[380px] opacity-100") : "w-0 opacity-0"
           )}
           style={{
             background: `linear-gradient(135deg, ${accentColor.value}40 0%, ${accentColor.value}30 50%, ${accentColor.value}35 100%)`,
@@ -106,7 +109,10 @@ export function FriendsSidebar() {
         </div>
 
         <div
-          className="w-96 h-full flex flex-col backdrop-blur-md"
+          className={cn(
+            "h-full flex flex-col backdrop-blur-md",
+            !isMobile ? "w-96" : (activeChatFriend || isSettingsOpen) ? "hidden" : "w-full",
+          )}
           style={{
             background: `linear-gradient(180deg, ${accentColor.value}45 0%, ${accentColor.value}35 30%, ${accentColor.value}40 100%)`,
             borderLeft: `2px solid ${accentColor.value}60`,

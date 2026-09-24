@@ -22,6 +22,8 @@ import { isWebGLAvailable } from "@noriskclient/nrc-skin-renderer";
 import { useLauncherTheme } from "../../hooks/useLauncherTheme";
 import { setDiscordState } from "../../utils/discordRpc";
 import { useTranslation } from "react-i18next";
+import { PlayerRig } from "../launcher/PlayerRig";
+import { isMobile } from "../../lib/platform";
 
 export function PlayTab() {
   const { t } = useTranslation();
@@ -67,6 +69,20 @@ export function PlayTab() {
 
   // promo-outline shader settings for the 3D player preview
   const outline = { strength: 4, thickness: 3, sensitivity: 0.1 };
+
+  if (isMobile) {
+    return (
+      <div className="h-full overflow-y-auto overflow-x-hidden custom-scrollbar">
+        <div className="relative flex flex-col items-center overflow-hidden pt-2">
+          <PlayerRig
+            playerName={activeAccount?.minecraft_username || activeAccount?.username}
+            outline={outline}
+          />
+        </div>
+        <NewsSection className="h-auto border-t-2 border-white/40 bg-black/10 backdrop-blur-lg flex flex-col relative z-10" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full relative">

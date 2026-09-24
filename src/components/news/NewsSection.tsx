@@ -10,6 +10,7 @@ import { cn } from "../../lib/utils";
 import { NewsCard } from "../ui/NewsCard";
 import { useThemeStore } from "../../store/useThemeStore";
 import { useNewsStore } from "../../store/useNewsStore";
+import { isMobile } from "../../lib/platform";
 
 interface NewsSectionProps {
   className?: string;
@@ -193,14 +194,14 @@ export function NewsSection({ className }: NewsSectionProps) {
       ref={newsRef}
       className={cn("h-full flex flex-col !p-3 z-0 relative", className)}
       style={{
-        width: `${newsSectionWidth}px`,
+        width: isMobile ? "100%" : `${newsSectionWidth}px`,
         borderLeft: `2px solid ${accentColor.value}60`,
         borderRight: `2px solid ${accentColor.value}60`,
         boxShadow: `0 0 15px ${accentColor.value}30 inset`,
       }}
     >
       {/* Resize handle */}
-      <div
+      {!isMobile && <div
         className={cn(
           "absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize z-10",
           isResizing && "bg-white/20"
@@ -209,7 +210,7 @@ export function NewsSection({ className }: NewsSectionProps) {
           backgroundColor: isResizing ? `${accentColor.value}40` : 'transparent',
         }}
         onMouseDown={handleResizeStart}
-      />
+      />}
       <div className="pb-1">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">

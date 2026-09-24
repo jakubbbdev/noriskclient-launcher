@@ -6,6 +6,7 @@ import { Icon } from "@iconify/react";
 import { ACCENT_COLORS, useThemeStore } from "../store/useThemeStore";
 import { Button } from "./ui/buttons/Button";
 import { Input } from "./ui/Input";
+import { isMobile } from "../lib/platform";
 
 interface ColorPickerProps {
   shape?: "square" | "circle";
@@ -62,14 +63,15 @@ export function ColorPicker({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-3 p-1">
+      {/* Phones: 16 swatches fill two even rows across the full width */}
+      <div className={isMobile ? "grid grid-cols-8 gap-2 p-1" : "flex flex-wrap gap-3 p-1"}>
         {Object.values(ACCENT_COLORS).map((color) => (
           <button
             key={color.name}
             onClick={() => !disabled && setAccentColor(color)}
             disabled={disabled}
             className={`
-              ${sizeClasses[size]} 
+              ${isMobile ? "w-full aspect-square" : sizeClasses[size]} 
               ${shapeClasses[shape]} 
               relative transition-all duration-200
               ${disabled 
@@ -105,7 +107,7 @@ export function ColorPicker({
             onClick={() => !disabled && setShowCustomPicker(!showCustomPicker)}
             disabled={disabled}
             className={`
-              ${sizeClasses[size]} 
+              ${isMobile ? "w-full aspect-square" : sizeClasses[size]} 
               ${shapeClasses[shape]} 
               relative transition-all duration-200
               ${disabled 

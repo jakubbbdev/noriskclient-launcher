@@ -1,4 +1,6 @@
 import { createHashRouter, Navigate } from "react-router-dom";
+import { isMobile } from "./platform";
+import { McRealTab } from "../components/tabs/McRealTab";
 import { App } from "../App";
 import { RouteErrorBoundary } from "../components/RouteErrorBoundary";
 import { PlayTab } from "../components/tabs/PlayTab";
@@ -69,9 +71,11 @@ export const router = createHashRouter([
         element: <StoreTab />,
       },
       {
-        path: "clips",
-        element: <ClipsPage />,
+        path: "mcreal",
+        element: <McRealTab />,
       },
+      // Clips are desktop-only; keeping the route out drops the page from mobile bundles.
+      ...(isMobile ? [] : [{ path: "clips", element: <ClipsPage /> }]),
       // DISABLED: Advent Calendar (seasonal feature)
       // {
       //   path: "advent-calendar",

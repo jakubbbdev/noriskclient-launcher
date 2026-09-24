@@ -41,6 +41,7 @@ import { CapeGuidelinesModal } from "./CapeGuidelinesModal";
 import { isCapeInReview } from "../../utils/cape-error-translations";
 import { translateApiError } from "../../utils/nrc-error-translations";
 import { getLauncherConfig } from "../../services/launcher-config-service";
+import { isMobile } from "../../lib/platform";
 
 
 
@@ -816,7 +817,7 @@ export function CapeBrowser(): JSX.Element {
             empty list. */}
         {activeAccount && (<>
         <div className="mb-4">
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className={isMobile ? "grid grid-cols-2 gap-2 [&>*]:w-full [&>*]:justify-center" : "flex items-center gap-2 flex-wrap"}>
                 <button
                   onClick={() => {
                     const newFilters = { ...filters, showOwnedOnly: false, showFavoritesOnly: false, showVanillaOnly: false };
@@ -918,11 +919,11 @@ export function CapeBrowser(): JSX.Element {
             </div>
             {/* Search & Filters */}
             <div className="mb-6 pb-4 border-b border-white/10">
-              <div className="flex items-center gap-4">
+              <div className={isMobile ? "flex flex-col gap-3" : "flex items-center gap-4"}>
                 <div className="flex-1">
                   {!filters.showVanillaOnly ? (
                     <SearchWithFilters
-                      placeholder={t('capes.searchPlayerPlaceholder')}
+                      placeholder={t(isMobile ? 'capes.searchPlayerPlaceholderShort' : 'capes.searchPlayerPlaceholder')}
                       searchValue={searchQuery}
                       onSearchChange={handleSearchChange}
                       onSearchEnter={handleSearchEnter}
@@ -950,9 +951,11 @@ export function CapeBrowser(): JSX.Element {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex items-center gap-3">
+                <div className={isMobile ? "flex [&>*]:flex-1 [&>*]:justify-center" : "flex items-center gap-3"}>
                   {activeAccount && (
                     <>
+                      {/* The template download opens a file explorer: desktop only */}
+                      {!isMobile && (
                       <div className="relative" ref={templateMenuRef}>
                         <button
                           onClick={() => setShowTemplateMenu(!showTemplateMenu)}
@@ -985,6 +988,7 @@ export function CapeBrowser(): JSX.Element {
                         )}
                       </div>
 
+                      )}
                       <button
                         onClick={handleUploadClick}
                         className="flex items-center gap-2 px-4 py-2 bg-black/30 hover:bg-black/40 text-white/70 hover:text-white border border-white/10 hover:border-white/20 rounded-lg font-smallcaps text-base transition-all duration-200"

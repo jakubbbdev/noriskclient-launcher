@@ -7,6 +7,7 @@ import { Icon } from "@iconify/react";
 import { cn } from "../../lib/utils";
 import { useThemeStore } from "../../store/useThemeStore";
 import { IconButton } from "./buttons/IconButton";
+import { isMobile } from "../../lib/platform";
 
 interface ModalProps {
   title: string;
@@ -103,6 +104,9 @@ export function Modal({
     full: "max-w-[95vw] w-full",
   };
 
+  // Phones: big dialogs (settings, wizards) take the whole screen.
+  const isSheet = isMobile && (width === "lg" || width === "xl" || width === "full");
+
   const getBorderClasses = () => {
     if (variant === "3d") {
       return "border-2 border-b-4";
@@ -119,7 +123,10 @@ export function Modal({
   return (
     <div
       ref={modalRef}
-      className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md-anyos"
+      className={cn(
+        "fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 backdrop-blur-md-anyos",
+        isSheet ? "p-0" : isMobile ? "p-3" : "p-4",
+      )}
       onClick={handleBackdropClick}
     >
       <div
@@ -129,6 +136,8 @@ export function Modal({
           variant === "3d" ? "shadow-2xl" : "",
           widthClasses[width],
           className,
+          isSheet && "!max-w-none !w-full !h-full !max-h-full !min-h-0 rounded-none border-0",
+          isMobile && !isSheet && "max-h-[85dvh]",
         )}
         style={{
           backgroundColor: `${accentColor.value}20`,
@@ -146,7 +155,10 @@ export function Modal({
 
         <div
           ref={headerRef}
-          className="flex items-center justify-between px-6 py-4 border-b-2 flex-shrink-0"
+          className={cn(
+            "flex items-center justify-between border-b-2 flex-shrink-0",
+            isMobile ? "px-4 py-3" : "px-6 py-4",
+          )}
           style={{
             borderColor: `${accentColor.value}60`,
             backgroundColor: `${accentColor.value}30`,

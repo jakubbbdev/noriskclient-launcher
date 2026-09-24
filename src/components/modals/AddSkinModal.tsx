@@ -20,6 +20,7 @@ import { FlatSkin } from "@noriskclient/nrc-skin-renderer/react";
 import { useIdleEmote } from "../../hooks/useIdleEmote";
 import { SearchStyleInput } from "../ui/Input";
 import { parseErrorMessage } from "../../utils/error-utils";
+import { isMobile } from "../../lib/platform";
 
 interface AddSkinModalProps {
   skin?: MinecraftSkin;
@@ -535,7 +536,7 @@ export const AddSkinModal = memo(
                     id="skinInputField"
                     value={skinInput}
                     onChange={(e) => setSkinInput(e.target.value)}
-                    placeholder={t('skins.skinInputPlaceholder')}
+                    placeholder={t(isMobile ? 'skins.skinInputPlaceholderShort' : 'skins.skinInputPlaceholder')}
                     disabled={isLoading}
                     size="md"
                     variant="flat"

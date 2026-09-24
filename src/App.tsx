@@ -27,6 +27,10 @@ import { MacCapturePermissionMonitor } from "./components/clips/MacCapturePermis
 import { GlobalModalPortal } from "./components/ui/GlobalModalPortal";
 import { useCrashModalStore } from "./store/crash-modal-store";
 import { useThemeStore } from "./store/useThemeStore";
+import { useFriendsStore } from "./store/friends-store";
+import { isMobile } from "./lib/platform";
+import { onBackButtonPress } from "@tauri-apps/api/app";
+import { exit } from "@tauri-apps/plugin-process";
 import { useLaunchStateStore } from "./store/launch-state-store";
 import { useGlobalModal } from "./hooks/useGlobalModal";
 import { Modal } from "./components/ui/Modal";
@@ -549,7 +553,30 @@ export function App() {
     incrementLaunchCount();
   }, [incrementLaunchCount]);
 
+  // Android back button: close the top-most overlay, then go home, then leave.
+  useEffect(() => {
+    if (!isMobile) return;
+    const listener = onBackButtonPress(() => {
+      const settings = useSettingsModalStore.getState();
+      const friends = useFriendsStore.getState();
+      if (settings.isOpen) return settings.close();
+      if (friends.activeChatFriend) return friends.closeChat();
+      if (friends.isSettingsOpen) return friends.closeSettings();
+      if (friends.isSidebarOpen) return friends.closeSidebar();
+      if (window.location.hash !== "#/play") return navigate("/play");
+      void exit(0);
+    });
+    return () => {
+      void listener.then((l) => l.unregister());
+    };
+  }, [navigate]);
+
   const handleNavChange = async (tabId: string) => {
+    // Friends live in the slide-in sidebar, on mobile it gets its own nav entry.
+    if (tabId === "friends") {
+      useFriendsStore.getState().toggleSidebar();
+      return;
+    }
     if (tabId === "settings") {
       useSettingsModalStore.getState().open();
       if (analyticsConsent.decision === 'accepted') {
@@ -575,7 +602,7 @@ export function App() {
 
   return (
     <FlagsmithProvider flagsmith={flagsmith}>
-      <div className="flex flex-col h-screen w-screen overflow-hidden">
+      <div className={`flex flex-col ${isMobile ? "h-[100dvh]" : "h-screen"} w-screen overflow-hidden`}>
         <ThemeInitializer />
         <ScrollbarProvider />
         <GlobalToaster />
@@ -586,7 +613,7 @@ export function App() {
         <TermsOfServiceModal isOpen={!hasAcceptedTermsOfService} />
         {showWelcome && <WelcomeScreen />}
         <GlobalModalPortal />
-        <MacCapturePermissionMonitor />
+        {!isMobile && <MacCapturePermissionMonitor />}
         <ChildProtectionModal />
         <NotificationModal />
         <AppLayout activeTab={activeTab} onNavChange={handleNavChange}>

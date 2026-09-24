@@ -6,6 +6,8 @@ import { gsap } from "gsap";
 import { Icon } from "@iconify/react";
 
 import { VerticalNavbar } from ".././navigation/VerticalNavbar";
+import { MobileBottomNav } from ".././navigation/MobileBottomNav";
+import { isMobile } from "../../lib/platform";
 import { UserProfileBar } from ".././header/UserProfileBar";
 import { NavigationHistory } from "../ui/NavigationHistory";
 import { useThemeStore } from "../../store/useThemeStore";
@@ -78,10 +80,18 @@ export function AppLayout({
   const refreshClips = useClipsStore((state) => state.refresh);
 
   useEffect(() => {
-    void refreshClips();
+    if (!isMobile) void refreshClips();
   }, [refreshClips]);
 
-  const navItems = [
+  // Mobile ships no game/profile management: only the social side of the launcher.
+  const mobileNavItems = [
+    { id: "play", icon: "solar:home-2-bold", label: t("nav.home") },
+    { id: "friends", icon: "solar:users-group-rounded-bold", label: t("nav.friends") },
+    { id: "mcreal", icon: "solar:camera-bold", label: t("nav.mcreal") },
+    { id: "skins", icon: "solar:emoji-funny-circle-bold", label: t("nav.skins") },
+    { id: "capes", icon: "solar:shop-bold", label: t("nav.capes") },
+  ];
+  const desktopNavItems = [
     { id: "play", icon: "solar:play-bold", label: t("nav.play") },
     { id: "profiles", icon: "solar:user-id-bold", label: t("nav.profiles") },
     { id: "mods", icon: "solar:widget-bold", label: t("nav.mods") },
@@ -94,6 +104,7 @@ export function AppLayout({
     // { id: "advent-calendar", icon: "solar:gift-bold", label: t("nav.advent") },
     { id: "settings", icon: "solar:settings-bold", label: t("nav.settings"), isAction: true },
   ];
+  const navItems = isMobile ? mobileNavItems : desktopNavItems;
   const { qualityLevel } = useQualitySettingsStore();
   const { isBackgroundAnimationEnabled, accentColor: themeAccentColor, accentColor } = useThemeStore();
   const { isEnabled: isSnowEnabled } = useSnowEffectStore();
@@ -334,7 +345,7 @@ export function AppLayout({
   return (
     <div
       ref={launcherRef}
-      className="h-screen w-full bg-black/50 backdrop-blur-lg border-2 overflow-hidden relative flex shadow-[0_0_25px_rgba(0,0,0,0.4)]"
+      className={`${isMobile ? "h-[100dvh]" : "h-screen"} w-full bg-black/50 backdrop-blur-lg border-2 overflow-hidden relative flex shadow-[0_0_25px_rgba(0,0,0,0.4)] ${isMobile ? "flex-col" : ""}`}
       style={{
         backgroundColor: backgroundColor,
         backgroundSize: "cover",
@@ -348,15 +359,17 @@ export function AppLayout({
     >
       <BorderGlowEffects accentColor={themeAccentColor.value} />
 
-      <VerticalNavbar
-        items={navItems}
-        activeItem={activeTab}
-        onItemClick={onNavChange}
-        className="h-full border-r-2 z-10"
-        version={appConfig.version}
-      />
+      {!isMobile && (
+        <VerticalNavbar
+          items={navItems}
+          activeItem={activeTab}
+          onItemClick={onNavChange}
+          className="h-full border-r-2 z-10"
+          version={appConfig.version}
+        />
+      )}
 
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
+      <div className={`flex-1 flex flex-col overflow-hidden ${isMobile ? "min-h-0" : "h-full"}`}>
         <HeaderBar
           minimizeRef={minimizeRef}
           maximizeRef={maximizeRef}
@@ -374,6 +387,9 @@ export function AppLayout({
           </div>
         </div>
       </div>
+      {isMobile && (
+        <MobileBottomNav items={navItems} activeItem={activeTab} onItemClick={onNavChange} />
+      )}
       {/* Global Modals Portal */}
       <SocialsModal />
       <ProfileWizardV2Modal />
@@ -504,6 +520,8 @@ function HeaderBar({ minimizeRef, maximizeRef, closeRef }: HeaderBarProps) {
   };
 
     fetchVersion();
+    // App stores ship mobile updates; the in-app updater only exists on desktop.
+    if (isMobile) return;
     checkForUpdates();
 
     // Check for updates every 4 hours (4 * 60 * 60 * 1000 = 14,400,000 ms)
@@ -519,7 +537,7 @@ function HeaderBar({ minimizeRef, maximizeRef, closeRef }: HeaderBarProps) {
 
   return (
     <div
-      className="h-20 flex-shrink-0 border-b-2 backdrop-blur-lg flex items-center justify-between px-8 z-10"
+      className={`flex-shrink-0 border-b-2 backdrop-blur-lg flex items-center justify-between ${isMobile ? "z-20 h-14 px-3 pt-[env(safe-area-inset-top)] box-content" : "z-10 h-20 px-8"}`}
       style={{
         borderColor: `${accentColor.value}40`,
         backgroundColor: `rgba(${Number.parseInt(accentColor.value.slice(1, 3), 16)}, ${Number.parseInt(
@@ -530,12 +548,12 @@ function HeaderBar({ minimizeRef, maximizeRef, closeRef }: HeaderBarProps) {
       data-tauri-drag-region
     >
       <div className="flex items-center gap-4" data-tauri-drag-region>
-        <NavigationHistory />
+        {!isMobile && <NavigationHistory />}
 
         <div className="flex flex-col items-start">
           <div className="flex items-center gap-3">
             <h1
-              className="font-smallcaps text-2xl tracking-wider font-bold text-shadow"
+              className={`font-smallcaps tracking-wider font-bold text-shadow ${isMobile ? "text-xl" : "text-2xl"}`}
               data-tauri-drag-region
             >
               NoRiskClient
@@ -557,18 +575,20 @@ function HeaderBar({ minimizeRef, maximizeRef, closeRef }: HeaderBarProps) {
               </Tooltip>
             )}
           </div>
-          <HeaderInfoCarousel version={appVersion} />
+          {!isMobile && <HeaderInfoCarousel version={appVersion} />}
         </div>
       </div>
 
       <div className="flex items-center gap-4">
         <UserProfileBar />
 
-        <WindowControls
-          minimizeRef={minimizeRef}
-          maximizeRef={maximizeRef}
-          closeRef={closeRef}
-        />
+        {!isMobile && (
+          <WindowControls
+            minimizeRef={minimizeRef}
+            maximizeRef={maximizeRef}
+            closeRef={closeRef}
+          />
+        )}
       </div>
     </div>
   );

@@ -14,6 +14,8 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
+  // TAURI_ENV_PLATFORM etc. drive src/lib/platform.ts
+  envPrefix: ["VITE_", "TAURI_ENV_"],
 
   define: {
     __SKIN_RENDERER_VERSION__: JSON.stringify(skinRendererVersion),
