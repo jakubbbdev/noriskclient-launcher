@@ -331,7 +331,8 @@ export function App() {
     (async () => {
       try {
         const launcherVersion = await invoke<string>('get_app_version').catch(() => 'unknown');
-        const javaInfo: any = await invoke('get_java_info_command').catch(() => null);
+        // Phones have no Java; the event then reports java_version "unknown".
+        const javaInfo: any = isMobile ? null : await invoke('get_java_info_command').catch(() => null);
         const osInfo = await invoke<{ os: string; os_version: string; arch: string }>(
           'get_system_os_info',
         ).catch(() => ({ os: 'unknown', os_version: 'unknown', arch: 'unknown' }));
