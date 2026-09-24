@@ -42,6 +42,9 @@ import { isCapeInReview } from "../../utils/cape-error-translations";
 import { translateApiError } from "../../utils/nrc-error-translations";
 import { getLauncherConfig } from "../../services/launcher-config-service";
 import { isMobile } from "../../lib/platform";
+import { isNetworkError } from "../../lib/network";
+import { parseErrorMessage } from "../../utils/error-utils";
+import { OfflineState } from "../ui/OfflineState";
 
 
 
@@ -197,6 +200,7 @@ export function CapeBrowser(): JSX.Element {
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [showElytraPreview, setShowElytraPreview] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [offline, setOffline] = useState(false);
   const [uploadWarning, setUploadWarning] = useState<string | null>(null);
 
 
@@ -243,8 +247,10 @@ export function CapeBrowser(): JSX.Element {
         const response = await browseCapes(browseOptions);
         setAllCapes(response.capes);
         setAllPagination(response.pagination);
+        setOffline(false);
       } catch (error) {
         console.error("Failed to load ALL capes:", error);
+        if (isMobile) setOffline(isNetworkError(parseErrorMessage(error)));
       } finally {
         setIsLoadingAll(false);
       }
@@ -286,6 +292,7 @@ export function CapeBrowser(): JSX.Element {
           });
         } catch (fallbackError) {
           console.error("Fallback also failed:", fallbackError);
+          if (isMobile && isNetworkError(parseErrorMessage(fallbackError))) setOffline(true);
         }
       } finally {
         setIsLoadingMy(false);
@@ -417,11 +424,14 @@ export function CapeBrowser(): JSX.Element {
           });
           setPagination(response.pagination);
         }
+        if (!append) setOffline(false);
       } catch (err: any) {
         console.error("Error fetching capes:", err);
+        const noConnection = isMobile && isNetworkError(parseErrorMessage(err));
+        if (!append) setOffline(noConnection);
         const errorMessage =
           err?.message || t('capes.failedToLoadCapes');
-        toast.error(errorMessage);
+        if (!noConnection) toast.error(errorMessage);
         if (!append) {
           const setCapes = getCapesSetter(currentFilters.showOwnedOnly);
           const setPagination = getPaginationSetter(currentFilters.showOwnedOnly);
@@ -1006,6 +1016,9 @@ export function CapeBrowser(): JSX.Element {
             </>)}
 
             {/* Cape List */}
+            {offline ? (
+              <OfflineState onRetry={() => fetchCapesData(0, filters, searchQuery, false)} />
+            ) : (
             <CapeList
               capes={capesForList}
               onEquipCape={handleEquipCape}
@@ -1028,6 +1041,7 @@ export function CapeBrowser(): JSX.Element {
               isModerator={isModerator && !filters.showOwnedOnly && !filters.showVanillaOnly}
               onModeratorDeleteCape={isModerator && !filters.showVanillaOnly && !filters.showOwnedOnly ? handleModeratorDeleteCapeClick : undefined}
             />
+            )}
       </div>
     </div>
   );

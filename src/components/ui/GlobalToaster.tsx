@@ -7,6 +7,8 @@ import { gsap } from "gsap";
 import { useThemeStore } from "../../store/useThemeStore";
 import { usePlayerAvatar } from "../../hooks/usePlayerAvatar";
 import { isMobile } from "../../lib/platform";
+import { isNetworkError } from "../../lib/network";
+import i18n from "../../i18n/i18n";
 import {
   getBorderRadiusClass,
   createRadiusStyle,
@@ -14,6 +16,14 @@ import {
   getToastBaseStyles,
   TOAST_BASE_CLASSES
 } from "./design-system";
+
+if (isMobile) {
+  const showError = hotToast.error;
+  hotToast.error = (message, options) =>
+    isNetworkError(message)
+      ? showError(i18n.t("common.offline_title"), { ...options, id: "offline" })
+      : showError(message, options);
+}
 
 function PlayerToastContent({ message, uuid }: { message: string; uuid: string }) {
   const avatarUrl = usePlayerAvatar({ uuid, size: 32 });

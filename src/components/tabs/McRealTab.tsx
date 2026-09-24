@@ -9,6 +9,8 @@ import { useThemeStore } from "../../store/useThemeStore";
 import { isMobile } from "../../lib/platform";
 import { McRealPostCard } from "../mcreal/McRealPostCard";
 import { usePullToRefresh, PullToRefreshIndicator } from "../../hooks/usePullToRefresh";
+import { isNetworkError } from "../../lib/network";
+import { OfflineState } from "../ui/OfflineState";
 import type { McRealSort } from "../../types/mcreal";
 
 const TABS: { id: McRealFeedTab; labelKey: string }[] = [
@@ -167,7 +169,11 @@ export function McRealTab() {
             </div>
           )}
 
-          {error && !loading && (
+          {error && !loading && isMobile && isNetworkError(error) && (
+            <OfflineState onRetry={() => { void loadFeed(true); void refreshTodayPost(); }} />
+          )}
+
+          {error && !loading && !(isMobile && isNetworkError(error)) && (
             <div className="col-span-full text-center py-8">
               <span className="font-minecraft-ten text-xs text-red-400 break-words">
                 {error}

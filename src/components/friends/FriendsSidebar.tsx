@@ -19,6 +19,7 @@ type FriendListRow =
 
 type TabType = "friends" | "requests";
 import { isMobile } from "../../lib/platform";
+import { OfflineState } from "../ui/OfflineState";
 import { usePullToRefresh, PullToRefreshIndicator } from "../../hooks/usePullToRefresh";
 
 export function FriendsSidebar() {
@@ -318,23 +319,11 @@ function FriendsTab({
 
   if (loadFailed && onlineFriends.length === 0 && offlineFriends.length === 0) {
     return (
-      <div className="py-12 px-6 text-center">
-        <div
-          className="w-16 h-16 mx-auto mb-4 rounded-xl flex items-center justify-center"
-          style={{ backgroundColor: `${accentColor}15`, border: `1px solid ${accentColor}40` }}
-        >
-          <Icon icon="solar:wi-fi-router-minimalistic-bold" className="w-8 h-8" style={{ color: accentColor }} />
-        </div>
-        <p className="text-white/50 text-xs font-minecraft">{t('friends.load_error_title')}</p>
-        <p className="text-white/30 text-sm mt-1 font-smallcaps">{t('friends.load_error_desc')}</p>
-        <button
-          onClick={onRetry}
-          className="mt-4 px-4 py-2 rounded-lg font-smallcaps text-sm text-white"
-          style={{ backgroundColor: `${accentColor}30`, border: `1px solid ${accentColor}60` }}
-        >
-          {t('friends.retry')}
-        </button>
-      </div>
+      <OfflineState
+        onRetry={onRetry}
+        title={t('friends.load_error_title')}
+        description={t('friends.load_error_desc')}
+      />
     );
   }
 
