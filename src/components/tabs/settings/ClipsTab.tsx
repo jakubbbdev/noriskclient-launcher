@@ -7,6 +7,8 @@ import { Icon } from "@iconify/react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { getLogFileContent, listLauncherLogs, uploadLogToMclogs } from "../../../services/log-service";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import { Select } from "../../ui/Select";
@@ -853,6 +855,14 @@ export function ClipsTab() {
             {t("settings.clips.library.open")}
           </Button>
         </SettingRow>
+
+        <SettingRow
+          label={t("settings.clips.support.label")}
+          description={t("settings.clips.support.description")}
+          searchKeywords={kw("settings.clips.support.label", "log", "support", "hilfe", "help", "fehler", "problem")}
+        >
+          <ShareCaptureLog t={t} />
+        </SettingRow>
       </SettingsSection>
       </>}
     </div>
@@ -953,6 +963,49 @@ function FallbackNotice({
             : t("settings.clips.quality.encoder.gpu"),
       })}
     />
+  );
+}
+
+function ShareCaptureLog({
+  t,
+}: {
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  const [uploading, setUploading] = useState(false);
+
+  const share = async () => {
+    setUploading(true);
+    try {
+      const log = (await listLauncherLogs()).find((file) => file.name === "capture.log");
+      if (!log) {
+        toast.error(t("settings.clips.support.missing"));
+        return;
+      }
+      const url = await uploadLogToMclogs(await getLogFileContent(log.path));
+      await writeText(url);
+      toast.success(t("settings.clips.support.uploaded"));
+    } catch (e) {
+      toast.error(t("debug.upload_failed", { error: parseErrorMessage(e) }));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <Button
+      variant="flat"
+      size="sm"
+      icon={
+        <Icon
+          icon={uploading ? "svg-spinners:ring-resize" : "solar:upload-bold"}
+          className="w-4 h-4"
+        />
+      }
+      onClick={() => void share()}
+      disabled={uploading}
+    >
+      {t("settings.clips.support.upload")}
+    </Button>
   );
 }
 

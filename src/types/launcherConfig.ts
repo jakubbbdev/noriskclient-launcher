@@ -127,6 +127,9 @@ export interface CaptureStatus {
   capabilities: EncoderCapability[];
   active_codec: ClipCodec | null;
   active_encoder: ClipEncoder | null;
+  capture_method: string | null;
+  capture_fps: number;
+  dropped_frames: number;
   audio_devices: AudioDeviceInfo[];
   microphones: AudioDeviceInfo[];
   supports_game_only_audio: boolean;
