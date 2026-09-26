@@ -148,6 +148,10 @@ impl CaptureSupervisor {
         *self.active.read().await
     }
 
+    pub async fn last_status(&self) -> Option<norisk_ipc::StatusReport> {
+        self.last_status.read().await.clone()
+    }
+
     pub async fn is_running(&self) -> bool {
         *self.running.read().await
     }
@@ -244,6 +248,8 @@ impl CaptureSupervisor {
                     json!({
                         "game": kind,
                         "capture_method": method,
+                        "codec": status.active_codec,
+                        "encoder": status.active_encoder,
                         "attach_ms": started.elapsed().as_millis() as u64,
                     }),
                 );
@@ -259,6 +265,7 @@ impl CaptureSupervisor {
                     json!({
                         "game": kind,
                         "capture_method": method,
+                        "encoder": status.active_encoder,
                         "minutes": tenths(since.elapsed().as_secs_f64() / 60.0),
                         "dropped_frames": status.dropped_frames,
                         "dropped_before_keyframe": status.dropped_before_keyframe,
@@ -600,6 +607,9 @@ impl CaptureSupervisor {
                         json!({
                             "engine_version": info.engine_version,
                             "gpu_vendor": gpu_vendor(&info.adapter),
+                            "gpu": info.adapter,
+                            "gpu_driver": info.gpu_driver,
+                            "driver_too_old": info.capabilities.iter().any(|c| c.driver_too_old),
                             "encoders": info.available_encoders,
                             "hardware_encoders": info
                                 .capabilities

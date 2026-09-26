@@ -26,6 +26,9 @@ pub struct CaptureStatus {
     pub capabilities: Vec<EncoderCapability>,
     pub active_codec: Option<ClipCodec>,
     pub active_encoder: Option<EncoderPreference>,
+    pub capture_method: Option<String>,
+    pub capture_fps: f32,
+    pub dropped_frames: u64,
     pub audio_devices: Vec<AudioDeviceInfo>,
     pub microphones: Vec<AudioDeviceInfo>,
     pub supports_game_only_audio: bool,
@@ -159,6 +162,7 @@ pub async fn capture_status() -> Result<CaptureStatus, CommandError> {
     let current = supervisor.state().await;
     let ready = supervisor.ready_info().await;
     let active = supervisor.active_encoder().await;
+    let live = supervisor.last_status().await;
     let audio = ready
         .as_ref()
         .map(|r| {
@@ -183,6 +187,9 @@ pub async fn capture_status() -> Result<CaptureStatus, CommandError> {
         capabilities: ready.map(|r| r.capabilities).unwrap_or_default(),
         active_codec: active.map(|(codec, _)| codec),
         active_encoder: active.map(|(_, encoder)| encoder),
+        capture_method: live.as_ref().and_then(|s| s.capture_method.clone()),
+        capture_fps: live.as_ref().map_or(0.0, |s| s.capture_fps),
+        dropped_frames: live.as_ref().map_or(0, |s| s.dropped_frames),
         audio_devices: audio.0,
         microphones: audio.1,
         supports_game_only_audio: audio.2,
