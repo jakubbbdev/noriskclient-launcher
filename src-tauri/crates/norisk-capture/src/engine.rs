@@ -22,6 +22,58 @@ const STATUS_INTERVAL: Duration = Duration::from_secs(1);
 const HEALTH_GRACE: Duration = Duration::from_secs(3);
 const FAILURE_LOG_EVERY: u64 = 600;
 const FRESH_ENOUGH_SECONDS: f64 = 5.0;
+const TROUBLE_WINDOW: Duration = Duration::from_secs(120);
+const TROUBLE_LIMIT: usize = 3;
+const FIRST_REST: Duration = Duration::from_secs(60);
+const HEALTHY_AFTER: Duration = Duration::from_secs(120);
+const SPARE_BYTES: u64 = 32 * 1024 * 1024;
+const PLAYBACK_CHECK_PACKETS: usize = 120;
+
+#[derive(Debug, PartialEq, Eq)]
+enum Verdict {
+    Report,
+    Quiet,
+    Rest(Duration),
+}
+
+#[derive(Default)]
+struct Trouble {
+    pid: u32,
+    recent: VecDeque<Instant>,
+    rests: u32,
+    resting_until: Option<Instant>,
+}
+
+impl Trouble {
+    fn note(&mut self, pid: u32, now: Instant) -> Verdict {
+        if self.pid != pid {
+            *self = Trouble { pid, ..Default::default() };
+        }
+        self.recent.retain(|at| now.saturating_duration_since(*at) < TROUBLE_WINDOW);
+        self.recent.push_back(now);
+
+        if self.recent.len() >= TROUBLE_LIMIT {
+            let rest = FIRST_REST * 2u32.pow(self.rests.min(3));
+            self.rests += 1;
+            self.recent.clear();
+            self.resting_until = Some(now + rest);
+            return Verdict::Rest(rest);
+        }
+        if self.recent.len() == 1 {
+            Verdict::Report
+        } else {
+            Verdict::Quiet
+        }
+    }
+
+    fn resting(&self, pid: u32, now: Instant) -> bool {
+        self.pid == pid && self.resting_until.is_some_and(|until| now < until)
+    }
+
+    fn resting_at_all(&self, now: Instant) -> bool {
+        self.resting_until.is_some_and(|until| now < until)
+    }
+}
 const ENCODE_QUEUE_DEPTH: usize = 4;
 
 const PROGRESS_EVERY: Duration = Duration::from_millis(150);
@@ -40,6 +92,7 @@ pub struct Engine {
     retired: Option<Retired>,
     buffering_enabled: bool,
     paused_pid: Option<u32>,
+    trouble: Trouble,
     last_status: Instant,
     rate_sample: std::cell::Cell<(u64, u64, Instant)>,
     keyframe_warned: std::cell::Cell<bool>,
@@ -256,6 +309,7 @@ impl Engine {
             retired: None,
             buffering_enabled: true,
             paused_pid: None,
+            trouble: Trouble::default(),
             last_status: Instant::now(),
             rate_sample: std::cell::Cell::new((0, 0, Instant::now())),
             keyframe_warned: std::cell::Cell::new(false),
@@ -360,6 +414,7 @@ impl Engine {
     fn handle(&mut self, command: LauncherToCapture) -> Result<()> {
         match command {
             LauncherToCapture::Configure(config) => {
+                self.trouble = Trouble::default();
                 let restart = self.active.is_some() && needs_restart(&self.config, &config);
                 self.config = config;
                 if restart {
@@ -376,6 +431,8 @@ impl Engine {
                     self.paused_pid = Some(pid);
                 } else if self.attached_pid() == Some(pid) {
                     log::debug!("Already recording process {pid}; leaving the pipeline alone");
+                } else if self.trouble.resting(pid, Instant::now()) {
+                    log::debug!("Recording process {pid} kept failing; waiting before trying again");
                 } else {
                     self.detach();
                     self.begin_attach(pid);
@@ -383,6 +440,7 @@ impl Engine {
             }
             LauncherToCapture::DetachWindow => {
                 self.paused_pid = None;
+                self.trouble = Trouble::default();
                 self.detach();
             }
             LauncherToCapture::SetBufferEnabled { enabled } => {
@@ -390,6 +448,7 @@ impl Engine {
                     return Ok(());
                 }
                 self.buffering_enabled = enabled;
+                self.trouble = Trouble::default();
 
                 if enabled {
                     log::info!("Buffering resumed");
@@ -526,7 +585,7 @@ impl Engine {
                 self.pending_attach = None;
                 if let Err(e) = self.attach(target) {
                     log::error!("Could not start capturing process {pid}: {e:#}");
-                    self.emit_error(ErrorCode::Internal, format!("{e:#}"), true);
+                    self.troubled(pid, ErrorCode::Internal, format!("{e:#}"));
                 }
             }
             window::SearchStep::TimedOut => {
@@ -545,6 +604,10 @@ impl Engine {
         };
         if pipeline.started.elapsed() < HEALTH_GRACE {
             return;
+        }
+        if pipeline.started.elapsed() >= HEALTHY_AFTER && self.trouble.rests + self.trouble.recent.len() as u32 > 0 {
+            log::debug!("Recording has run cleanly for {HEALTHY_AFTER:?}; forgetting earlier failures");
+            self.trouble = Trouble::default();
         }
 
         if crate::fault::due("crash", pipeline.started) {
@@ -572,13 +635,39 @@ impl Engine {
 
         let pid = pipeline.target.pid;
         log::warn!("Recording broke because {why}; rebuilding it");
-        self.emit_error(
+        let again = self.troubled(
+            pid,
             ErrorCode::GraphicsDevice,
             format!("recording broke because {why}; it is starting again"),
-            true,
         );
         self.detach_retaining_buffer(Duration::ZERO);
-        self.begin_attach(pid);
+        if again {
+            self.begin_attach(pid);
+        }
+    }
+
+    fn troubled(&mut self, pid: u32, code: ErrorCode, message: String) -> bool {
+        match self.trouble.note(pid, Instant::now()) {
+            Verdict::Report => {
+                self.emit_error(code, message, true);
+                true
+            }
+            Verdict::Quiet => true,
+            Verdict::Rest(rest) => {
+                log::warn!(
+                    "Recording failed {TROUBLE_LIMIT} times within {TROUBLE_WINDOW:?}; waiting {rest:?} before trying again"
+                );
+                self.emit_error(
+                    code,
+                    format!(
+                        "recording keeps failing, so it waits {} s before trying again: {message}",
+                        rest.as_secs()
+                    ),
+                    true,
+                );
+                false
+            }
+        }
     }
 
     fn step_resize_watch(&mut self) {
@@ -1097,13 +1186,18 @@ impl Engine {
 
         std::thread::Builder::new()
             .name("nrc-save".into())
-            .spawn(move || match write_mp4(&clip, &path, &track, audio_track.as_slice()) {
+            .spawn(move || match room_for(&path, clip.bytes)
+                .and_then(|()| write_mp4(&clip, &path, &track, audio_track.as_slice()))
+            {
                 Ok(written) => {
                     log::info!(
                         "Saved {:.1}s clip to {}",
                         written.duration_seconds,
                         path.display()
                     );
+                    if let Err(e) = plays_back(&written.path) {
+                        log::error!("The saved clip {} will not play back: {e:#}", written.path.display());
+                    }
                     let _ = events.send(CaptureToLauncher::ClipSaved(ClipManifest {
                         path: written.path,
                         thumbnail: None,
@@ -1139,6 +1233,8 @@ impl Engine {
                     CaptureState::Paused
                 } else if self.pending_attach.is_some() {
                     CaptureState::Attaching
+                } else if self.trouble.resting_at_all(Instant::now()) {
+                    CaptureState::Failed
                 } else {
                     CaptureState::Idle
                 },
@@ -1996,6 +2092,68 @@ fn chrono_now() -> String {
     format!("{secs}")
 }
 
+fn room_for(path: &std::path::Path, bytes: u64) -> Result<()> {
+    use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+
+    let Some(folder) = path.parent() else {
+        return Ok(());
+    };
+    let mut free = 0u64;
+    let asked = unsafe {
+        GetDiskFreeSpaceExW(&windows::core::HSTRING::from(folder), Some(&mut free), None, None)
+    };
+    if asked.is_err() {
+        return Ok(());
+    }
+
+    let needed = bytes + bytes / 10 + SPARE_BYTES;
+    if free < needed {
+        anyhow::bail!(
+            "the drive is too full for this clip: it needs about {} MB and only {} MB are free",
+            needed / (1024 * 1024),
+            free / (1024 * 1024)
+        );
+    }
+    Ok(())
+}
+
+fn plays_back(path: &std::path::Path) -> Result<()> {
+    use ffmpeg_next as ffmpeg;
+
+    let mut input = ffmpeg::format::input(&path).context("the file does not open")?;
+    let (index, parameters) = {
+        let stream = input
+            .streams()
+            .best(ffmpeg::media::Type::Video)
+            .context("it holds no picture")?;
+        (stream.index(), stream.parameters())
+    };
+    if !matches!(parameters.id(), ffmpeg::codec::Id::H264 | ffmpeg::codec::Id::HEVC) {
+        return Ok(());
+    }
+    let mut decoder = ffmpeg::codec::context::Context::from_parameters(parameters)?
+        .decoder()
+        .video()
+        .context("no decoder for its picture")?;
+
+    let mut frame = ffmpeg::frame::Video::empty();
+    let packets = input
+        .packets()
+        .filter(|(stream, _)| stream.index() == index)
+        .take(PLAYBACK_CHECK_PACKETS);
+    for (_, packet) in packets {
+        decoder.send_packet(&packet).context("its picture data is broken")?;
+        if decoder.receive_frame(&mut frame).is_ok() {
+            return Ok(());
+        }
+    }
+    decoder.send_eof().ok();
+    if decoder.receive_frame(&mut frame).is_ok() {
+        return Ok(());
+    }
+    anyhow::bail!("not one picture in it can be decoded")
+}
+
 fn black_frame(device: &CaptureDevice, pool: &HwFramePool, fps: u32) -> Result<PoolFrame> {
     use windows::Win32::Graphics::Direct3D11::{
         D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE, D3D11_SUBRESOURCE_DATA,
@@ -2131,6 +2289,67 @@ fn hook_handshake(
                 std::thread::sleep(Duration::from_millis(25));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod trouble_tests {
+    use super::*;
+
+    #[test]
+    fn a_single_failure_is_reported_and_the_next_ones_stay_quiet() {
+        let mut trouble = Trouble::default();
+        let now = Instant::now();
+
+        assert_eq!(trouble.note(7, now), Verdict::Report);
+        assert_eq!(trouble.note(7, now + Duration::from_secs(5)), Verdict::Quiet);
+        assert!(!trouble.resting(7, now + Duration::from_secs(5)));
+    }
+
+    #[test]
+    fn repeated_failures_rest_longer_each_time_up_to_a_ceiling() {
+        let mut trouble = Trouble::default();
+        let mut now = Instant::now();
+        let mut rests = Vec::new();
+
+        for _ in 0..5 {
+            let mut verdict = Verdict::Quiet;
+            for _ in 0..TROUBLE_LIMIT {
+                now += Duration::from_secs(1);
+                verdict = trouble.note(7, now);
+            }
+            let Verdict::Rest(rest) = verdict else {
+                panic!("{TROUBLE_LIMIT} quick failures did not lead to a rest");
+            };
+            assert!(trouble.resting(7, now));
+            assert!(!trouble.resting(8, now), "another game should not wait");
+            rests.push(rest.as_secs());
+            now += rest;
+            assert!(!trouble.resting(7, now), "the rest never ended");
+        }
+
+        assert_eq!(rests, vec![60, 120, 240, 480, 480]);
+    }
+
+    #[test]
+    fn failures_spread_far_apart_never_add_up_to_a_rest() {
+        let mut trouble = Trouble::default();
+        let mut now = Instant::now();
+
+        for _ in 0..10 {
+            now += TROUBLE_WINDOW;
+            assert_eq!(trouble.note(7, now), Verdict::Report);
+        }
+    }
+
+    #[test]
+    fn another_game_starts_with_a_clean_slate() {
+        let mut trouble = Trouble::default();
+        let now = Instant::now();
+
+        trouble.note(7, now);
+        trouble.note(7, now);
+        assert_eq!(trouble.note(8, now), Verdict::Report);
     }
 }
 
