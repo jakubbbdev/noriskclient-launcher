@@ -127,6 +127,25 @@ pub fn to_vertical(
     request: &norisk_ipc::ExportVerticalRequest,
     progress: impl Fn(u32, u32),
 ) -> Result<VerticalResult> {
+    let mut used = None;
+    match render(request, &progress, &RENDER_ENCODERS, &mut used) {
+        Err(e) if used.is_some_and(|name| name != CPU_ENCODER) => {
+            log::warn!(
+                "Rendering with {} failed ({e:#}); rendering again on the processor",
+                used.map(|name| name.to_string_lossy()).unwrap_or_default()
+            );
+            render(request, &progress, &[CPU_ENCODER], &mut used)
+        }
+        done => done,
+    }
+}
+
+fn render(
+    request: &norisk_ipc::ExportVerticalRequest,
+    progress: &impl Fn(u32, u32),
+    encoders: &[&'static std::ffi::CStr],
+    used: &mut Option<&'static std::ffi::CStr>,
+) -> Result<VerticalResult> {
     let destination = request.destination.as_path();
     let clip = crate::trim::read(&request.source)?;
     let ratio = crop_ratio(request.shape, clip.track.width, clip.track.height);
@@ -177,7 +196,8 @@ pub fn to_vertical(
     let feed = to_decode(&clip.video, picture_start, picture_end);
     let crop = (left, right, top, bottom);
     let mut decoder = Decoder::open(&clip.track)?;
-    let mut encoder = Encoder::open(width, height, clip.track.fps)?;
+    let (mut encoder, name) = Encoder::open(width, height, clip.track.fps, encoders)?;
+    *used = Some(name);
 
     let gaps = Gaps::new(&request.removed, clip.first_pts, want_start, want_end);
     let overlays: Vec<norisk_ipc::ClipOverlay> = request
@@ -528,20 +548,26 @@ struct Encoder {
     packet: *mut ff::AVPacket,
 }
 
-const RENDER_ENCODERS: [&std::ffi::CStr; 3] = [c"h264_nvenc", c"h264_amf", c"libx264"];
+const CPU_ENCODER: &std::ffi::CStr = c"libx264";
+const RENDER_ENCODERS: [&std::ffi::CStr; 3] = [c"h264_nvenc", c"h264_amf", CPU_ENCODER];
 
 impl Encoder {
-    fn open(width: u32, height: u32, fps: u32) -> Result<Self> {
-        for name in RENDER_ENCODERS {
+    fn open(
+        width: u32,
+        height: u32,
+        fps: u32,
+        encoders: &[&'static std::ffi::CStr],
+    ) -> Result<(Self, &'static std::ffi::CStr)> {
+        for &name in encoders {
             match Self::open_with(Some(name), width, height, fps) {
                 Ok(encoder) => {
                     log::info!("Rendering with {}", name.to_string_lossy());
-                    return Ok(encoder);
+                    return Ok((encoder, name));
                 }
                 Err(e) => log::debug!("{} cannot render here: {e:#}", name.to_string_lossy()),
             }
         }
-        Self::open_with(None, width, height, fps)
+        Ok((Self::open_with(None, width, height, fps)?, CPU_ENCODER))
     }
 
     fn open_with(
