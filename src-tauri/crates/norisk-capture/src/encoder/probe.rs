@@ -122,14 +122,17 @@ fn probe_one(
     }
     result.compiled_in = true;
 
-    if candidate.hardware {
+    let takes_gpu_frames =
+        unsafe { (*codec_ptr).capabilities & ff::AV_CODEC_CAP_HARDWARE as i32 != 0 };
+
+    if takes_gpu_frames {
         let Some(pool) = pool else {
             result.detail = Some("no graphics device available to test with".into());
             return result;
         };
         match try_open_hardware(codec_ptr, pool) {
             Ok(()) => result.opens = true,
-            Err(e) => result.detail = Some(shorten(&e.to_string())),
+            Err(e) => result.detail = Some(explain(candidate, &e.to_string())),
         }
     } else {
         match try_open_software(codec_ptr) {
@@ -206,6 +209,13 @@ impl Drop for ContextGuard {
             ff::avcodec_free_context(&mut self.0);
         }
     }
+}
+
+fn explain(candidate: &Candidate, error: &str) -> String {
+    if candidate.preference == EncoderPreference::Nvenc && error.contains("not implemented") {
+        return "the NVIDIA driver is too old for NVENC; version 570 or newer is needed".into();
+    }
+    shorten(error)
 }
 
 fn shorten(message: &str) -> String {
