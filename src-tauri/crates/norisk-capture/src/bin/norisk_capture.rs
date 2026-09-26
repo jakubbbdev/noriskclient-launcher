@@ -48,6 +48,13 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
+    std::panic::set_hook(Box::new(|info| {
+        let trace = std::backtrace::Backtrace::force_capture();
+        log::error!("The capture engine crashed: {info}
+{trace}");
+        log::logger().flush();
+    }));
+
     log::info!(
         "norisk-capture {} starting on {pipe_name}",
         env!("CARGO_PKG_VERSION")
