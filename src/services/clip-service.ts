@@ -276,6 +276,13 @@ export async function openCapturePermissionSettings(permission: CapturePermissio
   return invoke("capture_open_permission_settings", { permission });
 }
 
+export function errorKey(code: string): string {
+  return code
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join("");
+}
+
 export function samePath(a: string, b: string): boolean {
   const flatten = (path: string) => path.replace(/\\/g, "/").toLowerCase();
   return flatten(a) === flatten(b);

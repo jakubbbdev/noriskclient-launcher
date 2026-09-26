@@ -109,6 +109,7 @@ pub struct CaptureSupervisor {
     ready: Arc<RwLock<Option<ReadyInfo>>>,
     active: Arc<RwLock<Option<(norisk_ipc::ClipCodec, norisk_ipc::EncoderPreference)>>>,
     last_status: Arc<RwLock<Option<norisk_ipc::StatusReport>>>,
+    last_error: Arc<RwLock<Option<norisk_ipc::CaptureError>>>,
     app: Arc<RwLock<Option<tauri::AppHandle>>>,
     running: Arc<RwLock<bool>>,
 }
@@ -125,6 +126,7 @@ impl CaptureSupervisor {
             ready: Arc::new(RwLock::new(None)),
             active: Arc::new(RwLock::new(None)),
             last_status: Arc::new(RwLock::new(None)),
+            last_error: Arc::new(RwLock::new(None)),
             app: Arc::new(RwLock::new(None)),
             running: Arc::new(RwLock::new(false)),
         }
@@ -150,6 +152,10 @@ impl CaptureSupervisor {
 
     pub async fn last_status(&self) -> Option<norisk_ipc::StatusReport> {
         self.last_status.read().await.clone()
+    }
+
+    pub async fn last_error(&self) -> Option<norisk_ipc::CaptureError> {
+        self.last_error.read().await.clone()
     }
 
     pub async fn is_running(&self) -> bool {
@@ -625,6 +631,9 @@ impl CaptureSupervisor {
                 *self.ready.write().await = Some(info);
             }
             CaptureToLauncher::Status(status) => {
+                if status.state == CaptureState::Buffering {
+                    *self.last_error.write().await = None;
+                }
                 {
                     let mut current = self.state.write().await;
                     if *current != status.state {
@@ -829,6 +838,9 @@ impl CaptureSupervisor {
                 }
             }
             CaptureToLauncher::Error(error) => {
+                if error.code != norisk_ipc::ErrorCode::AudioDevice {
+                    *self.last_error.write().await = Some(error.clone());
+                }
                 log::error!(
                     "Capture engine error [{:?}]: {} (recoverable: {})",
                     error.code,

@@ -288,6 +288,8 @@ pub struct StatusReport {
     #[serde(default)]
     pub capture_method: Option<String>,
     #[serde(default)]
+    pub retry_in_seconds: Option<u32>,
+    #[serde(default)]
     pub active_codec: Option<ClipCodec>,
     #[serde(default)]
     pub active_encoder: Option<EncoderPreference>,
@@ -571,6 +573,7 @@ mod tests {
             dropped_before_keyframe: 0,
             encode_latency_ms_p99: 0.0,
             capture_method: Some("graphics hook".to_string()),
+            retry_in_seconds: Some(60),
             active_codec: Some(ClipCodec::Av1),
             active_encoder: Some(EncoderPreference::Nvenc),
         });

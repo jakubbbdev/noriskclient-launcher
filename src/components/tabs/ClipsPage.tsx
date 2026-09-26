@@ -13,7 +13,7 @@ import { Tooltip } from "../ui/Tooltip";
 import { formatShortcut } from "../ui/HotkeyInput";
 import { useWindowFocus } from "../../hooks/useWindowFocus";
 import { ClipGallery, type ClipSort } from "../clips/ClipGallery";
-import { getCaptureStatus, openClipFolder, runtimeDownloadPercent } from "../../services/clip-service";
+import { errorKey, getCaptureStatus, openClipFolder, runtimeDownloadPercent } from "../../services/clip-service";
 import { getLauncherConfig } from "../../services/launcher-config-service";
 import type { CaptureStatus, ClipEncoder } from "../../types/launcherConfig";
 import { BetaNotice } from "../ui/BetaNotice";
@@ -88,7 +88,7 @@ function health(
       return {
         tone: "warn",
         label: t("clips.page.status.failed"),
-        detail: t("clips.page.status.failed_hint"),
+        detail: failedDetail(status, t),
       };
     case "paused":
       return { tone: "waiting", label: t("clips.page.status.paused"), detail: null };
@@ -115,12 +115,29 @@ function liveDetail(
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
+function failedDetail(
+  status: CaptureStatus,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  const reason = status.last_error
+    ? t(`overlay.clip.error.${errorKey(status.last_error.code)}`, {
+        defaultValue: t("overlay.clip.error.generic"),
+      })
+    : null;
+  const retry =
+    status.retry_in_seconds !== null
+      ? t("clips.page.status.retry_in", { seconds: status.retry_in_seconds })
+      : null;
+  return [reason && `${reason}.`, retry, t("clips.page.status.failed_hint")].filter(Boolean).join(" ");
+}
+
 function warningsFor(
   status: CaptureStatus | null,
   chosenEncoder: ClipEncoder | null,
   dropping: boolean,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): string[] {
+  if (status?.state === "failed") return [failedDetail(status, t)];
   if (status?.state !== "buffering") return [];
   const warnings: string[] = [];
   if (status.capture_method === WINDOW) warnings.push(t("clips.page.warn.window_capture"));

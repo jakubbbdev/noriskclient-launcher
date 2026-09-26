@@ -73,6 +73,12 @@ impl Trouble {
     fn resting_at_all(&self, now: Instant) -> bool {
         self.resting_until.is_some_and(|until| now < until)
     }
+
+    fn retry_in(&self, now: Instant) -> Option<u32> {
+        self.resting_until
+            .filter(|until| now < *until)
+            .map(|until| until.saturating_duration_since(now).as_secs_f64().ceil() as u32)
+    }
 }
 const ENCODE_QUEUE_DEPTH: usize = 4;
 
@@ -1246,6 +1252,7 @@ impl Engine {
                 dropped_before_keyframe: 0,
                 encode_latency_ms_p99: 0.0,
                 capture_method: None,
+                retry_in_seconds: self.trouble.retry_in(Instant::now()),
                 active_codec: None,
                 active_encoder: None,
             }));
@@ -1317,6 +1324,7 @@ impl Engine {
             dropped_before_keyframe,
             encode_latency_ms_p99: latency_p99_ms(&pipeline.encode_latency),
             capture_method: Some(pipeline.source.describe().to_string()),
+            retry_in_seconds: None,
             active_codec: Some(pipeline.settings.codec),
             active_encoder: Some(pipeline.encoder),
         }));
@@ -2322,10 +2330,12 @@ mod trouble_tests {
                 panic!("{TROUBLE_LIMIT} quick failures did not lead to a rest");
             };
             assert!(trouble.resting(7, now));
+            assert_eq!(trouble.retry_in(now), Some(rest.as_secs() as u32));
             assert!(!trouble.resting(8, now), "another game should not wait");
             rests.push(rest.as_secs());
             now += rest;
             assert!(!trouble.resting(7, now), "the rest never ended");
+            assert_eq!(trouble.retry_in(now), None);
         }
 
         assert_eq!(rests, vec![60, 120, 240, 480, 480]);

@@ -130,6 +130,8 @@ export interface CaptureStatus {
   capture_method: string | null;
   capture_fps: number;
   dropped_frames: number;
+  retry_in_seconds: number | null;
+  last_error: { code: string; message: string; recoverable: boolean } | null;
   audio_devices: AudioDeviceInfo[];
   microphones: AudioDeviceInfo[];
   supports_game_only_audio: boolean;
