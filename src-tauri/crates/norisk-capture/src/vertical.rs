@@ -63,6 +63,30 @@ fn to_decode(packets: &[Packet], start: i64, end: i64) -> &[Packet] {
     &rest[..rest.iter().take_while(|p| p.dts <= end).count()]
 }
 
+const REFERENCE_HEIGHT: f32 = 1080.0;
+
+fn at_frame_height(overlay: &norisk_ipc::ClipOverlay, frame_height: u32) -> norisk_ipc::ClipOverlay {
+    use norisk_ipc::OverlayKind;
+
+    let unit = frame_height as f32 / REFERENCE_HEIGHT;
+    let scaled = |value: u32| ((value as f32 * unit).round() as u32).max(1);
+    let kind = match &overlay.kind {
+        OverlayKind::Blur { strength } => OverlayKind::Blur { strength: scaled(*strength) },
+        OverlayKind::Arrow { colour, thickness, towards } => OverlayKind::Arrow {
+            colour: *colour,
+            thickness: scaled(*thickness),
+            towards: *towards,
+        },
+        OverlayKind::Text { content, size, colour } => OverlayKind::Text {
+            content: content.clone(),
+            size: scaled(*size),
+            colour: *colour,
+        },
+        other => other.clone(),
+    };
+    norisk_ipc::ClipOverlay { kind, ..overlay.clone() }
+}
+
 fn place(pts: i64, start: i64, end: i64, last: Option<i64>) -> Option<i64> {
     (pts >= start && pts <= end && last.is_none_or(|last| pts > last)).then_some(pts)
 }
@@ -212,7 +236,7 @@ fn render(
             start_seconds: span.start_seconds,
             end_seconds: span.end_seconds,
         })
-        .chain(request.overlays.iter().cloned())
+        .chain(request.overlays.iter().map(|overlay| at_frame_height(overlay, clip.track.height)))
         .collect();
     let total = feed.len() as u32;
     let mut packets: Vec<Packet> = Vec::with_capacity(feed.len());
@@ -1027,6 +1051,43 @@ mod tests {
             );
         }
         assert!(fed.iter().all(|p| p.dts <= end));
+    }
+
+    #[test]
+    fn overlay_sizes_mean_the_same_share_of_the_picture_at_every_resolution() {
+        use norisk_ipc::{ClipOverlay, Corner, OverlayKind};
+
+        let arrow = ClipOverlay {
+            kind: OverlayKind::Arrow { colour: 0xffffff, thickness: 6, towards: Corner::TopLeft },
+            left: 0.1,
+            top: 0.2,
+            width: 0.3,
+            height: 0.4,
+            start_seconds: 1.0,
+            end_seconds: 2.0,
+        };
+        let text = ClipOverlay {
+            kind: OverlayKind::Text { content: "HI".into(), size: 48, colour: 0 },
+            ..arrow.clone()
+        };
+        let blur = ClipOverlay { kind: OverlayKind::Blur { strength: 12 }, ..arrow.clone() };
+        let size = |overlay: &ClipOverlay, height: u32| match at_frame_height(overlay, height).kind {
+            OverlayKind::Arrow { thickness, .. } => thickness,
+            OverlayKind::Text { size, .. } => size,
+            OverlayKind::Blur { strength } => strength,
+            OverlayKind::Box { .. } => 0,
+        };
+
+        assert_eq!(size(&arrow, 1080), 6, "1080p is the reference and must not change");
+        assert_eq!(size(&arrow, 540), 3);
+        assert_eq!(size(&arrow, 2160), 12);
+        assert_eq!(size(&text, 720), 32);
+        assert_eq!(size(&blur, 672), 7);
+        assert_eq!(size(&arrow, 10), 1, "a size never drops to nothing");
+
+        let moved = at_frame_height(&arrow, 720);
+        assert_eq!((moved.left, moved.top, moved.width, moved.height), (0.1, 0.2, 0.3, 0.4));
+        assert_eq!((moved.start_seconds, moved.end_seconds), (1.0, 2.0));
     }
 
     fn span(start_seconds: f64, end_seconds: f64) -> norisk_ipc::Span {

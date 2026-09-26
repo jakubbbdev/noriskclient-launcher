@@ -1074,7 +1074,11 @@ export function ClipTrimmer({
           <div
             ref={frameRef}
             className="relative w-full overflow-hidden rounded-lg border border-white/10 bg-black shadow-2xl"
-            style={{ aspectRatio: `${ratio}`, maxWidth: `calc(48vh * ${ratio})` }}
+            style={{
+              aspectRatio: `${ratio}`,
+              maxWidth: `calc(48vh * ${ratio})`,
+              containerType: "size",
+            }}
           >
             <video
               ref={videoRef}
@@ -1123,6 +1127,7 @@ export function ClipTrimmer({
               <OverlayBox
                 key={index}
                 overlay={overlay}
+                ratio={ratio}
                 active={chosen === index}
                 visible={playhead >= overlay.startSeconds && playhead <= overlay.endSeconds}
                 color={accentColor.value}
@@ -2145,7 +2150,14 @@ function CornerChoice({
   );
 }
 
-function OverlayArt({ overlay }: { overlay: ClipOverlay }) {
+const REFERENCE_HEIGHT = 1080;
+const BOX_BLUR_SIGMA = 0.577;
+
+function atReference(size: number): string {
+  return `${(size * 100) / REFERENCE_HEIGHT}cqh`;
+}
+
+function OverlayArt({ overlay, ratio }: { overlay: ClipOverlay; ratio: number }) {
   if (overlay.kind === "box") {
     return (
       <span
@@ -2155,8 +2167,8 @@ function OverlayArt({ overlay }: { overlay: ClipOverlay }) {
     );
   }
 
-  const width = Math.max(1, overlay.width * 1920);
-  const height = Math.max(1, overlay.height * 1080);
+  const width = Math.max(1, overlay.width * REFERENCE_HEIGHT * ratio);
+  const height = Math.max(1, overlay.height * REFERENCE_HEIGHT);
 
   if (overlay.kind === "arrow") {
     const thickness = Math.min(Math.max(overlay.thickness, 1), width, height);
@@ -2199,22 +2211,19 @@ function OverlayArt({ overlay }: { overlay: ClipOverlay }) {
 
   if (overlay.kind === "text" && overlay.content.trim() !== "") {
     return (
-      <svg
+      <div
         aria-hidden="true"
-        viewBox={`0 0 ${width} ${height}`}
-        preserveAspectRatio="xMinYMid meet"
-        className="pointer-events-none absolute inset-0 h-full w-full"
+        className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-all"
+        style={{
+          color: grey(overlay.colour),
+          fontFamily: "SmallCaps, monospace",
+          fontSize: atReference(overlay.size),
+          letterSpacing: "normal",
+          lineHeight: 1,
+        }}
       >
-        <text
-          x={0}
-          y={height / 2}
-          fill={grey(overlay.colour)}
-          fontSize={overlay.size}
-          dominantBaseline="middle"
-        >
-          {overlay.content}
-        </text>
-      </svg>
+        {overlay.content.trim()}
+      </div>
     );
   }
 
@@ -2223,6 +2232,7 @@ function OverlayArt({ overlay }: { overlay: ClipOverlay }) {
 
 function OverlayBox({
   overlay,
+  ratio,
   active,
   visible,
   color,
@@ -2231,6 +2241,7 @@ function OverlayBox({
   onGrab,
 }: {
   overlay: ClipOverlay;
+  ratio: number;
   active: boolean;
   visible: boolean;
   color: string;
@@ -2272,12 +2283,14 @@ function OverlayBox({
         width: `${overlay.width * 100}%`,
         height: `${overlay.height * 100}%`,
         backdropFilter:
-          overlay.kind === "blur" ? `blur(${Math.max(1, overlay.strength / 4)}px)` : undefined,
+          overlay.kind === "blur"
+            ? `blur(calc(${overlay.strength * BOX_BLUR_SIGMA} * ${atReference(1)}))`
+            : undefined,
         borderColor: blank ? "#fcd34d" : active ? color : undefined,
         boxShadow: active ? `0 0 10px ${color}80` : undefined,
       }}
     >
-      <OverlayArt overlay={overlay} />
+      <OverlayArt overlay={overlay} ratio={ratio} />
 
       <span
         role="presentation"
