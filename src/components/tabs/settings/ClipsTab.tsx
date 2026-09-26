@@ -450,6 +450,8 @@ export function ClipsTab() {
         <BitrateNotice spec={spec} t={t} />
 
         <FallbackNotice status={status} clips={clips} t={t} />
+
+        <DriverNotice matrix={matrix} t={t} />
         </div>
 
         <SettingRow
@@ -950,6 +952,24 @@ function FallbackNotice({
             ? t("settings.clips.quality.encoder.cpu")
             : t("settings.clips.quality.encoder.gpu"),
       })}
+    />
+  );
+}
+
+function DriverNotice({
+  matrix,
+  t,
+}: {
+  matrix: EncoderCapability[] | null;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  if (!matrix?.some((capability) => capability.driver_too_old)) return null;
+
+  return (
+    <StatusMessage
+      type="warning"
+      className="mb-0"
+      message={t("settings.clips.quality.encoder.driver_too_old")}
     />
   );
 }

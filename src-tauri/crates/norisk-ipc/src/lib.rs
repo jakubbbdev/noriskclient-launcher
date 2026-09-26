@@ -137,6 +137,8 @@ pub struct EncoderCapability {
     pub available: bool,
     pub hardware: bool,
     pub detail: Option<String>,
+    #[serde(default)]
+    pub driver_too_old: bool,
 }
 
 impl EncoderPreference {
@@ -363,6 +365,7 @@ mod selection_tests {
             available,
             hardware,
             detail: None,
+            driver_too_old: false,
         }
     }
 

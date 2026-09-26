@@ -2234,6 +2234,7 @@
   "hotkey.hint_recording": "Esc отменяет, Backspace очищает",
   "hotkey.conflict": "Уже используется другим действием",
   "settings.clips.quality.codec.fallback": "{{requested}} невозможен на этом ПК: клипы записываются как {{actual}} на {{encoder}}.",
+  "settings.clips.quality.encoder.driver_too_old": "Твой драйвер NVIDIA слишком старый для записи видеокартой. Обнови его до версии 570 или новее; до тех пор клипы записывает процессор, а это сильнее нагружает систему.",
   "settings.clips.audio.title": "Звук",
   "settings.clips.audio.description": "Что записывается вместе с картинкой в клипе.",
   "settings.clips.audio.source": "Записывать",

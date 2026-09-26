@@ -44,6 +44,7 @@ export interface EncoderCapability {
   available: boolean;
   hardware: boolean;
   detail: string | null;
+  driver_too_old?: boolean;
 }
 
 export interface QualitySpec {

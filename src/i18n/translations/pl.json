@@ -2232,6 +2232,7 @@
   "hotkey.hint_recording": "Esc anuluje, Backspace czyści",
   "hotkey.conflict": "Już użyty przez inną czynność",
   "settings.clips.quality.codec.fallback": "{{requested}} nie jest możliwy na tym komputerze, zamiast tego klipy są nagrywane jako {{actual}} na {{encoder}}.",
+  "settings.clips.quality.encoder.driver_too_old": "Twój sterownik NVIDIA jest za stary, by nagrywać kartą graficzną. Zaktualizuj go do wersji 570 lub nowszej; do tego czasu klipy nagrywa procesor, co kosztuje więcej wydajności.",
   "settings.clips.audio.title": "Dźwięk",
   "settings.clips.audio.description": "Co klip nagrywa razem z obrazem.",
   "settings.clips.audio.source": "Nagrywaj",

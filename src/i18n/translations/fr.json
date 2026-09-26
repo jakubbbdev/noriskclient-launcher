@@ -2232,6 +2232,7 @@
   "hotkey.hint_recording": "Échap annule, Retour arrière efface",
   "hotkey.conflict": "Déjà utilisé par l'autre action",
   "settings.clips.quality.codec.fallback": "{{requested}} n'est pas possible sur ce PC, les clips sont enregistrés en {{actual}} sur le {{encoder}} à la place.",
+  "settings.clips.quality.encoder.driver_too_old": "Ton pilote NVIDIA est trop ancien pour enregistrer avec la carte graphique. Mets-le à jour vers la version 570 ou plus récente ; en attendant, les clips sont enregistrés par le processeur, ce qui coûte plus de performances.",
   "settings.clips.audio.title": "Son",
   "settings.clips.audio.description": "Ce qu'un clip enregistre en plus de l'image.",
   "settings.clips.audio.source": "Enregistrer",

@@ -2247,6 +2247,7 @@
   "hotkey.hint_recording": "Esc कैंसल करता है, Backspace हटाता है",
   "hotkey.conflict": "यह दूसरे एक्शन में पहले से इस्तेमाल हो रहा है",
   "settings.clips.quality.codec.fallback": "{{requested}} इस PC पर संभव नहीं है, इसकी जगह क्लिप्स {{encoder}} पर {{actual}} के रूप में रिकॉर्ड हो रही हैं।",
+  "settings.clips.quality.encoder.driver_too_old": "आपका NVIDIA ड्राइवर ग्राफ़िक्स कार्ड से रिकॉर्ड करने के लिए बहुत पुराना है। इसे 570 या नए संस्करण पर अपडेट करें; तब तक क्लिप प्रोसेसर से रिकॉर्ड होंगी, जिससे ज़्यादा परफ़ॉर्मेंस लगती है।",
   "settings.clips.audio.title": "साउंड",
   "settings.clips.audio.description": "पिक्चर के साथ क्लिप क्या रिकॉर्ड करती है।",
   "settings.clips.audio.source": "रिकॉर्ड करें",

@@ -2232,6 +2232,7 @@
   "hotkey.hint_recording": "Esc cancela, Retroceso borra",
   "hotkey.conflict": "Ya la usa la otra acción",
   "settings.clips.quality.codec.fallback": "{{requested}} no es posible en este PC, los clips se están grabando como {{actual}} en {{encoder}} en su lugar.",
+  "settings.clips.quality.encoder.driver_too_old": "Tu controlador de NVIDIA es demasiado antiguo para grabar con la tarjeta gráfica. Actualízalo a la versión 570 o posterior; hasta entonces los clips se graban con el procesador, lo que cuesta más rendimiento.",
   "settings.clips.audio.title": "Sonido",
   "settings.clips.audio.description": "Lo que graba un clip además de la imagen.",
   "settings.clips.audio.source": "Grabar",

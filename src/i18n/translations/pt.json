@@ -2232,6 +2232,7 @@
   "hotkey.hint_recording": "Esc cancela, Backspace limpa",
   "hotkey.conflict": "Já usada pela outra ação",
   "settings.clips.quality.codec.fallback": "{{requested}} não é possível neste PC, os clipes estão sendo gravados como {{actual}} no {{encoder}}.",
+  "settings.clips.quality.encoder.driver_too_old": "Seu driver NVIDIA é antigo demais para gravar com a placa de vídeo. Atualize para a versão 570 ou mais recente; até lá os clipes são gravados pelo processador, o que custa mais desempenho.",
   "settings.clips.audio.title": "Som",
   "settings.clips.audio.description": "O que um clipe grava junto com a imagem.",
   "settings.clips.audio.source": "Gravar",

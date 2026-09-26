@@ -2242,6 +2242,7 @@
   "hotkey.hint_recording": "Esc bricht ab, Rücktaste löscht",
   "hotkey.conflict": "Wird bereits von der anderen Aktion benutzt",
   "settings.clips.quality.codec.fallback": "{{requested}} ist auf diesem PC nicht möglich — Clips werden stattdessen als {{actual}} über die {{encoder}} aufgenommen.",
+  "settings.clips.quality.encoder.driver_too_old": "Dein NVIDIA-Treiber ist zu alt, um mit der Grafikkarte aufzunehmen. Aktualisiere ihn auf Version 570 oder neuer — bis dahin nimmt der Prozessor auf, was mehr Leistung kostet.",
   "settings.clips.audio.title": "Ton",
   "settings.clips.audio.description": "Was ein Clip neben dem Bild aufnimmt.",
   "settings.clips.audio.source": "Aufnehmen",

@@ -2232,6 +2232,7 @@
   "hotkey.hint_recording": "Esc iptal eder, Backspace temizler",
   "hotkey.conflict": "Zaten başka bir eylem tarafından kullanılıyor",
   "settings.clips.quality.codec.fallback": "{{requested}} bu bilgisayarda mümkün değil, klipler bunun yerine {{encoder}} üzerinde {{actual}} olarak kaydediliyor.",
+  "settings.clips.quality.encoder.driver_too_old": "NVIDIA sürücün ekran kartıyla kayıt için çok eski. 570 veya daha yeni bir sürüme güncelle; o zamana kadar klipler işlemciyle kaydedilir ve bu daha fazla performans harcar.",
   "settings.clips.audio.title": "Ses",
   "settings.clips.audio.description": "Bir klibin görüntünün yanında neyi kaydettiği.",
   "settings.clips.audio.source": "Kaydet",
