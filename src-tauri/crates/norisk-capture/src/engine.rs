@@ -547,7 +547,13 @@ impl Engine {
             return;
         }
 
-        let broken = if let Err(e) = unsafe { pipeline.device.device.GetDeviceRemovedReason() } {
+        if crate::fault::due("crash", pipeline.started) {
+            panic!("simulated crash because NRC_FAULT=crash is set");
+        }
+
+        let broken = if crate::fault::due("device", pipeline.started) {
+            Some("the graphics driver reset (simulated)".to_string())
+        } else if let Err(e) = unsafe { pipeline.device.device.GetDeviceRemovedReason() } {
             Some(format!("the graphics driver reset or the card went away ({e})"))
         } else if matches!(
             pipeline.encode_done.try_recv(),
@@ -1830,6 +1836,7 @@ fn encode_loop(
 
     let report_after = (fps / REPEAT_AFTER_FRAMES as i64).max(1) as u64;
 
+    let started = Instant::now();
     let mut last: Option<PoolFrame> = None;
     let mut last_pts = i64::MIN;
     let mut repeats: u64 = 0;
@@ -1861,6 +1868,10 @@ fn encode_loop(
     };
 
     loop {
+        if crate::fault::due("encoder", started) {
+            log::error!("Encoding failed: simulated because NRC_FAULT=encoder is set");
+            return;
+        }
         match frames.recv_timeout(wait) {
             Ok(mut frame) => {
                 if reported {
