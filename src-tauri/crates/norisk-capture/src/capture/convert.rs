@@ -131,6 +131,7 @@ impl Converter {
         };
 
         unsafe {
+            video_context.VideoProcessorSetStreamAutoProcessingMode(&processor, 0, false);
             video_context.VideoProcessorSetStreamColorSpace1(
                 &processor,
                 0,
@@ -226,16 +227,17 @@ impl Converter {
         dst: &ID3D11Texture2D,
         dst_slice: u32,
     ) -> Result<()> {
+        let real = unsafe {
+            let mut desc = std::mem::zeroed::<
+                windows::Win32::Graphics::Direct3D11::D3D11_TEXTURE2D_DESC,
+            >();
+            source.GetDesc(&mut desc);
+            (desc.Width, desc.Height)
+        };
         let source_size = if content.0 > 0 && content.1 > 0 {
-            content
+            (content.0.min(real.0), content.1.min(real.1))
         } else {
-            unsafe {
-                let mut desc = std::mem::zeroed::<
-                    windows::Win32::Graphics::Direct3D11::D3D11_TEXTURE2D_DESC,
-                >();
-                source.GetDesc(&mut desc);
-                (desc.Width, desc.Height)
-            }
+            real
         };
 
         let flipped;
