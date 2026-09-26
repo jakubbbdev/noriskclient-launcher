@@ -19,6 +19,9 @@ use crate::encoder::{
 use crate::writer::{write_mp4, TrackInfo};
 
 const STATUS_INTERVAL: Duration = Duration::from_secs(1);
+const HEALTH_GRACE: Duration = Duration::from_secs(3);
+const FAILURE_LOG_EVERY: u64 = 600;
+const FRESH_ENOUGH_SECONDS: f64 = 5.0;
 const ENCODE_QUEUE_DEPTH: usize = 4;
 
 const PROGRESS_EVERY: Duration = Duration::from_millis(150);
@@ -33,7 +36,7 @@ pub struct Engine {
     events: UnboundedSender<CaptureToLauncher>,
     active: Option<Pipeline>,
     pending_attach: Option<window::WindowSearch>,
-    resize_settling: Option<((u32, u32), Instant)>,
+    resize_settling: Option<((u32, u32), Instant, Instant)>,
     retired: Option<Retired>,
     buffering_enabled: bool,
     paused_pid: Option<u32>,
@@ -60,6 +63,13 @@ impl FrameSource {
         match self {
             Self::Window(session) => session.window_pid(),
             Self::Hook(hook) => hook.pid(),
+        }
+    }
+
+    fn has_stopped(&self) -> bool {
+        match self {
+            Self::Window(_) => false,
+            Self::Hook(hook) => hook.has_stopped(),
         }
     }
 
@@ -96,6 +106,7 @@ struct Retired {
     settings: EncoderSettings,
     audio: Option<RetiredAudio>,
     at: Instant,
+    spoiled: Duration,
 }
 
 struct RetiredAudio {
@@ -109,6 +120,7 @@ const RETAIN_FOR: Duration = Duration::from_secs(MAX_CLIP_SECONDS_RETAINED);
 const MAX_CLIP_SECONDS_RETAINED: u64 = 130;
 
 struct Pipeline {
+    device: CaptureDevice,
     source: FrameSource,
     encode_thread: Option<std::thread::JoinHandle<()>>,
     encode_done: Receiver<()>,
@@ -267,6 +279,7 @@ impl Engine {
             }
 
             self.step_pending_attach();
+            self.step_health();
             self.step_resize_watch();
 
             if self.retired.as_ref().is_some_and(|r| r.at.elapsed() >= RETAIN_FOR) {
@@ -343,7 +356,7 @@ impl Engine {
                 if restart {
                     log::info!("Configuration changed materially; restarting the pipeline");
                     if let Some(pid) = self.attached_pid() {
-                        self.detach_retaining_buffer();
+                        self.detach_retaining_buffer(Duration::ZERO);
                         self.begin_attach(pid);
                     }
                 }
@@ -377,7 +390,7 @@ impl Engine {
                 } else {
                     log::info!("Buffering paused; releasing the capture until it resumes");
                     self.paused_pid = self.attached_pid();
-                    self.detach_retaining_buffer();
+                    self.detach_retaining_buffer(Duration::ZERO);
                 }
             }
             LauncherToCapture::SaveClip(request) => self.save_clip(request)?,
@@ -517,6 +530,42 @@ impl Engine {
         }
     }
 
+    fn step_health(&mut self) {
+        let Some(pipeline) = self.active.as_ref() else {
+            return;
+        };
+        if pipeline.started.elapsed() < HEALTH_GRACE {
+            return;
+        }
+
+        let broken = if let Err(e) = unsafe { pipeline.device.device.GetDeviceRemovedReason() } {
+            Some(format!("the graphics driver reset or the card went away ({e})"))
+        } else if matches!(
+            pipeline.encode_done.try_recv(),
+            Ok(()) | Err(std::sync::mpsc::TryRecvError::Disconnected)
+        ) {
+            Some("the video encoder stopped".to_string())
+        } else if pipeline.source.has_stopped() {
+            Some("the game stopped handing over its picture".to_string())
+        } else {
+            None
+        };
+
+        let Some(why) = broken else {
+            return;
+        };
+
+        let pid = pipeline.target.pid;
+        log::warn!("Recording broke because {why}; rebuilding it");
+        self.emit_error(
+            ErrorCode::GraphicsDevice,
+            format!("recording broke because {why}; it is starting again"),
+            true,
+        );
+        self.detach_retaining_buffer(Duration::ZERO);
+        self.begin_attach(pid);
+    }
+
     fn step_resize_watch(&mut self) {
         const SETTLE: Duration = Duration::from_secs(2);
 
@@ -542,7 +591,7 @@ impl Engine {
         }
 
         match self.resize_settling {
-            Some((pending, since)) if pending == wanted => {
+            Some((pending, since, began)) if pending == wanted => {
                 if since.elapsed() < SETTLE {
                     return;
                 }
@@ -558,10 +607,11 @@ impl Engine {
                     was.1
                 );
                 self.resize_settling = None;
-                self.detach_retaining_buffer();
+                self.detach_retaining_buffer(began.elapsed() + STATUS_INTERVAL);
                 self.pending_attach = Some(window::WindowSearch::new(pid, ATTACH_TIMEOUT));
             }
-            _ => self.resize_settling = Some((wanted, Instant::now())),
+            Some((_, _, began)) => self.resize_settling = Some((wanted, Instant::now(), began)),
+            None => self.resize_settling = Some((wanted, Instant::now(), Instant::now())),
         }
     }
 
@@ -576,20 +626,14 @@ impl Engine {
         };
 
         if codec != requested {
-            let message = format!(
-                "{requested:?} cannot be encoded on this machine; recording in {codec:?} instead"
-            );
-            log::warn!("{message}");
-            self.emit_error(ErrorCode::EncoderUnavailable, message, true);
+            log::warn!("{requested:?} cannot be encoded on this machine; recording in {codec:?} instead");
         }
         if encoder != self.config.encoder && self.config.encoder != norisk_ipc::EncoderPreference::Auto
         {
-            let message = format!(
+            log::warn!(
                 "{:?} is not usable on this machine; recording with {encoder:?} instead",
                 self.config.encoder
             );
-            log::warn!("{message}");
-            self.emit_error(ErrorCode::EncoderUnavailable, message, true);
         }
 
         log::info!("Recording {codec:?} with {encoder:?}");
@@ -601,7 +645,6 @@ impl Engine {
         self.keyframe_warned.set(false);
         self.empty_warned.set(false);
 
-        let device = CaptureDevice::new_for_window(target.hwnd)?;
         let (codec, chosen) = self.choose_encoder()?;
 
         let Some(source) = window::client_size(target.hwnd) else {
@@ -640,17 +683,19 @@ impl Engine {
             codec,
         };
 
+        let (device, hooked) = match hook_handshake(&target, settings.fps) {
+            Ok((session, texture)) => {
+                match CaptureDevice::new_for_shared_texture(target.hwnd, texture.handle) {
+                    Ok(device) => (device, Ok((session, texture))),
+                    Err(e) => (CaptureDevice::new_for_window(target.hwnd)?, Err(e)),
+                }
+            }
+            Err(e) => (CaptureDevice::new_for_window(target.hwnd)?, Err(e)),
+        };
+
         let pool = HwFramePool::new(&device, settings.width, settings.height)?;
-
-        let name = crate::encoder::encoder_name(codec, chosen)
-            .with_context(|| format!("no encoder is known for {codec:?} on {chosen:?}"))?;
-        let encoder = VideoEncoder::open(name, &pool, settings)?;
+        let (encoder, settings, chosen) = open_encoder(&pool, settings, chosen, &device.adapter_name)?;
         let extradata = encoder.extradata();
-        if extradata.is_empty() {
-            anyhow::bail!("encoder produced no global header; clips would not decode");
-        }
-
-        let hooked = hook_handshake(&target, settings.fps);
 
         let converter = if let Ok((_, texture)) = &hooked {
             let mut converter =
@@ -680,13 +725,12 @@ impl Engine {
         let (encode_done_tx, encode_done) = std::sync::mpsc::channel::<()>();
         let encode_thread = {
             let ring = Arc::clone(&ring);
-            let events = self.events.clone();
             let latency = Arc::clone(&encode_latency);
             std::thread::Builder::new()
                 .name("nrc-encode".into())
                 .spawn(move || {
                     let _done = encode_done_tx;
-                    encode_loop(encoder, frames_rx, ring, events, fps, latency)
+                    encode_loop(encoder, frames_rx, ring, fps, latency)
                 })
                 .context("could not start the encode thread")?
         };
@@ -695,6 +739,13 @@ impl Engine {
         let epoch_for_audio = Arc::clone(&epoch);
         let sink_dropped = Arc::clone(&dropped);
         let sink_tx = frames_tx.clone();
+        let failures = AtomicU64::new(0);
+        let failed = move |what: &str, e: anyhow::Error| {
+            let seen = failures.fetch_add(1, Ordering::Relaxed);
+            if seen % FAILURE_LOG_EVERY == 0 {
+                log::warn!("A frame was dropped because {what} failed ({} so far): {e:#}", seen + 1);
+            }
+        };
 
         let sink = move |frame: BgraFrame<'_>| {
                 let _ = epoch.compare_exchange(
@@ -705,14 +756,21 @@ impl Engine {
                 );
                 let base = epoch.load(Ordering::Relaxed);
 
-                let Ok(mut pool_frame) = pool.acquire() else {
-                    sink_dropped.fetch_add(1, Ordering::Relaxed);
-                    return;
+                let mut pool_frame = match pool.acquire() {
+                    Ok(pool_frame) => pool_frame,
+                    Err(e) => {
+                        sink_dropped.fetch_add(1, Ordering::Relaxed);
+                        failed("taking a frame from the pool", e);
+                        return;
+                    }
                 };
                 {
                     let (texture, slice) = pool_frame.target();
-                    if converter.convert(frame.texture, (frame.width, frame.height), texture, slice).is_err() {
+                    if let Err(e) =
+                        converter.convert(frame.texture, (frame.width, frame.height), texture, slice)
+                    {
                         sink_dropped.fetch_add(1, Ordering::Relaxed);
+                        failed("converting the picture", e);
                         return;
                     }
                 }
@@ -725,6 +783,7 @@ impl Engine {
                 }
         };
 
+        let health_device = device.clone();
         let source = match hooked {
             Ok((session, texture)) => {
                 log::info!(
@@ -783,6 +842,7 @@ impl Engine {
         );
 
         self.active = Some(Pipeline {
+            device: health_device,
             target,
             audio,
             source,
@@ -800,7 +860,7 @@ impl Engine {
         Ok(())
     }
 
-    fn detach_retaining_buffer(&mut self) {
+    fn detach_retaining_buffer(&mut self, spoiled: Duration) {
         if let Some(audio) = self.active.as_ref().and_then(|p| p.audio.as_ref()) {
             audio.drain_mixer();
         }
@@ -816,6 +876,7 @@ impl Engine {
                 channels: audio.channels,
             }),
             at: Instant::now(),
+            spoiled,
         });
 
         let drained = self.detach();
@@ -866,11 +927,10 @@ impl Engine {
     fn detach(&mut self) -> bool {
         self.pending_attach = None;
 
-        self.retired = None;
-
         let Some(mut pipeline) = self.active.take() else {
             return true;
         };
+        self.retired = None;
         log::info!("Detaching");
 
         drop(pipeline.source);
@@ -912,14 +972,15 @@ impl Engine {
             request.pre_roll_seconds as f32,
             request.post_roll_seconds as f32,
         );
-        let cut = |ring: &Arc<Mutex<RingBuffer>>| {
+        let cut = |ring: &Arc<Mutex<RingBuffer>>, spoiled: Duration| {
             let ring = ring.lock().unwrap_or_else(|e| e.into_inner());
-            let now = ring.newest_pts();
+            let spoiled = (spoiled.as_secs_f64() * TIME_BASE_DEN as f64) as i64;
+            let now = ring.newest_pts().saturating_sub(spoiled);
             ring.extract_around(now, pre, post)
         };
 
         let live = self.active.as_ref().and_then(|pipeline| {
-            cut(&pipeline.ring).map(|clip| {
+            cut(&pipeline.ring, Duration::ZERO).map(|clip| {
                 (
                     clip,
                     pipeline.extradata.clone(),
@@ -935,9 +996,9 @@ impl Engine {
         let mut chosen = live;
 
         if let Some(retired) = self.retired.as_ref().filter(|r| r.at.elapsed() < RETAIN_FOR) {
-            if let Some(older) = cut(&retired.ring) {
+            if let Some(older) = cut(&retired.ring, retired.spoiled) {
                 let older_seconds = older.duration_seconds(TIME_BASE_DEN as i64);
-                if older_seconds > live_seconds + 0.1 {
+                if live_seconds < FRESH_ENOUGH_SECONDS && older_seconds > live_seconds + 0.1 {
                     log::info!(
                         "Cutting from the buffer kept across the rebuild: {older_seconds:.1}s there against {live_seconds:.1}s live"
                     );
@@ -1738,7 +1799,6 @@ fn encode_loop(
     mut encoder: VideoEncoder,
     frames: Receiver<PoolFrame>,
     ring: Arc<Mutex<RingBuffer>>,
-    events: UnboundedSender<CaptureToLauncher>,
     fps: u32,
     latency: LatencyWindow,
 ) {
@@ -1776,11 +1836,6 @@ fn encode_loop(
             }
             Err(e) => {
                 log::error!("Encoding failed: {e:#}");
-                let _ = events.send(CaptureToLauncher::Error(CaptureError {
-                    code: ErrorCode::EncoderUnavailable,
-                    message: format!("{e:#}"),
-                    recoverable: false,
-                }));
                 false
             }
         }
@@ -1897,6 +1952,54 @@ fn chrono_now() -> String {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     format!("{secs}")
+}
+
+fn open_encoder(
+    pool: &HwFramePool,
+    settings: EncoderSettings,
+    preferred: norisk_ipc::EncoderPreference,
+    adapter: &str,
+) -> Result<(VideoEncoder, EncoderSettings, norisk_ipc::EncoderPreference)> {
+    use norisk_ipc::{ClipCodec, EncoderPreference};
+
+    let matrix = crate::encoder::capabilities();
+    let first = (settings.codec, preferred);
+    let mut tries = vec![first];
+    for other in matrix
+        .iter()
+        .filter(|c| c.codec == settings.codec && c.available && c.hardware)
+        .map(|c| (c.codec, c.encoder))
+        .chain([(settings.codec, EncoderPreference::Software), (ClipCodec::H264, EncoderPreference::Software)])
+    {
+        if !tries.contains(&other) {
+            tries.push(other);
+        }
+    }
+
+    let mut last = None;
+    for (codec, encoder) in tries {
+        let Some(name) = crate::encoder::encoder_name(codec, encoder) else {
+            continue;
+        };
+        let settings = EncoderSettings { codec, ..settings };
+        match VideoEncoder::open(name, pool, settings) {
+            Ok(opened) if !opened.extradata().is_empty() => {
+                if (codec, encoder) != first {
+                    log::warn!("Recording with {name} on '{adapter}' instead of the encoder picked first");
+                }
+                return Ok((opened, settings, encoder));
+            }
+            Ok(_) => {
+                log::warn!("{name} opened on '{adapter}' but gave no codec header; trying the next encoder");
+            }
+            Err(e) => {
+                log::warn!("{name} would not open on '{adapter}': {e:#}; trying the next encoder");
+                last = Some(e);
+            }
+        }
+    }
+
+    Err(last.unwrap_or_else(|| anyhow::anyhow!("no encoder could be opened")))
 }
 
 fn hook_handshake(

@@ -11,8 +11,7 @@ use windows::Win32::Graphics::Direct3D11::{
     D3D11_SDK_VERSION,
 };
 use windows::Win32::Graphics::Dxgi::{
-    CreateDXGIFactory1, IDXGIAdapter, IDXGIDevice, IDXGIFactory1, DXGI_ADAPTER_FLAG,
-    DXGI_ADAPTER_FLAG_SOFTWARE,
+    CreateDXGIFactory1, IDXGIAdapter, IDXGIDevice, IDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE,
 };
 use windows::Win32::Graphics::Gdi::{MonitorFromWindow, HMONITOR, MONITOR_DEFAULTTONEAREST};
 use windows::Win32::System::WinRT::Direct3D11::CreateDirect3D11DeviceFromDXGIDevice;
@@ -36,8 +35,35 @@ impl CaptureDevice {
     }
 
     pub fn new_default() -> Result<Self> {
-        let (adapter, adapter_name) = first_hardware_adapter()?;
+        let (adapter, adapter_name) = hardware_adapters()?
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow!("no hardware graphics adapter found"))?;
         Self::create(adapter, adapter_name)
+    }
+
+    pub fn new_for_shared_texture(hwnd: HWND, handle: u32) -> Result<Self> {
+        let first = Self::new_for_window(hwnd)?;
+        let refused = match super::shared::open_shared_texture(&first.device, handle) {
+            Ok(_) => return Ok(first),
+            Err(e) => e,
+        };
+
+        for (adapter, name) in hardware_adapters()? {
+            let Ok(device) = Self::create(adapter, name) else {
+                continue;
+            };
+            if super::shared::open_shared_texture(&device.device, handle).is_ok() {
+                log::info!(
+                    "The game draws on '{}', not on '{}' which drives its monitor; recording there",
+                    device.adapter_name,
+                    first.adapter_name
+                );
+                return Ok(device);
+            }
+        }
+
+        Err(refused.context("no graphics card in this computer could open the game's image"))
     }
 
     fn create(adapter: IDXGIAdapter, adapter_name: String) -> Result<Self> {
@@ -130,22 +156,26 @@ fn refusal(adapter: &IDXGIAdapter, name: &str) -> String {
     }
 }
 
-fn first_hardware_adapter() -> Result<(IDXGIAdapter, String)> {
+fn hardware_adapters() -> Result<Vec<(IDXGIAdapter, String)>> {
     let factory: IDXGIFactory1 =
         unsafe { CreateDXGIFactory1().context("CreateDXGIFactory1 failed")? };
 
+    let mut found = Vec::new();
     for i in 0.. {
         let Ok(adapter) = (unsafe { factory.EnumAdapters1(i) }) else {
             break;
         };
         let desc = unsafe { adapter.GetDesc1() }.context("IDXGIAdapter1::GetDesc1 failed")?;
-        if DXGI_ADAPTER_FLAG(desc.Flags as i32) == DXGI_ADAPTER_FLAG_SOFTWARE {
+        if is_software(desc.Flags) {
             continue;
         }
-        return Ok((adapter.cast()?, utf16_to_string(&desc.Description)));
+        found.push((adapter.cast()?, utf16_to_string(&desc.Description)));
     }
+    Ok(found)
+}
 
-    Err(anyhow!("no hardware graphics adapter found"))
+fn is_software(flags: u32) -> bool {
+    flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0
 }
 
 fn adapter_for_monitor(monitor: HMONITOR) -> Result<(IDXGIAdapter, String)> {
@@ -160,7 +190,7 @@ fn adapter_for_monitor(monitor: HMONITOR) -> Result<(IDXGIAdapter, String)> {
         };
 
         let desc = unsafe { adapter.GetDesc1() }.context("IDXGIAdapter1::GetDesc1 failed")?;
-        if DXGI_ADAPTER_FLAG(desc.Flags as i32) == DXGI_ADAPTER_FLAG_SOFTWARE {
+        if is_software(desc.Flags) {
             continue;
         }
 
