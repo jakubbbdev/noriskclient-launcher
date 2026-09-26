@@ -300,6 +300,8 @@ impl Engine {
     }
 
     fn announce_ready(&self) {
+        let gpus = crate::capture::system::gpus();
+        crate::capture::system::log_system(&gpus);
         let matrix = crate::encoder::capabilities();
         report_encoders(&matrix);
         let encoders = crate::encoder::available_for(norisk_ipc::ClipCodec::H264, &matrix);
@@ -337,6 +339,11 @@ impl Engine {
         let audio_devices = describe(crate::audio::wasapi::output_devices(), "audio outputs");
         let microphones = describe(crate::audio::wasapi::input_devices(), "microphones");
 
+        let gpu_driver = gpus
+            .iter()
+            .find(|gpu| adapter.starts_with(&gpu.name))
+            .and_then(|gpu| gpu.driver.clone());
+
         let _ = self.events.send(CaptureToLauncher::Ready(ReadyInfo {
             protocol_version: norisk_ipc::PROTOCOL_VERSION,
             engine_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -346,6 +353,7 @@ impl Engine {
             audio_devices,
             microphones,
             supports_game_only_audio: crate::audio::wasapi::supports_process_capture(),
+            gpu_driver,
         }));
     }
 

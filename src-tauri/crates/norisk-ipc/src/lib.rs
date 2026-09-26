@@ -253,6 +253,8 @@ pub struct ReadyInfo {
     pub microphones: Vec<AudioDeviceInfo>,
     #[serde(default)]
     pub supports_game_only_audio: bool,
+    #[serde(default)]
+    pub gpu_driver: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
