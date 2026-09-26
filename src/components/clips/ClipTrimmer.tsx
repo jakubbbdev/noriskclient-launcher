@@ -29,6 +29,7 @@ import { useTrimPreview } from "./useTrimPreview";
 import { useEditHistory } from "./useEditHistory";
 import { ColorPickerModal } from "../modals/ColorPickerModal";
 import { useGlobalModal } from "../../hooks/useGlobalModal";
+import { isMacOS } from "../../utils/platform";
 
 const MIN_LENGTH = 0.5;
 
@@ -125,6 +126,9 @@ const PANELS: { id: Panel; icon: string; label: string }[] = [
   { id: "format", icon: "solar:smartphone-bold", label: "clips.editor.shape.label" },
 ];
 
+const FULL_EDITOR = !isMacOS();
+const OFFERED_PANELS = FULL_EDITOR ? PANELS : PANELS.filter((entry) => entry.id === "audio");
+
 interface BoxDrag {
   index: number;
   mode: "move" | "resize";
@@ -214,7 +218,7 @@ export function ClipTrimmer({
   const [overlays, setOverlays] = useState<ClipOverlay[]>([]);
   const [chosen, setChosen] = useState<number | null>(null);
   const [shape, setShape] = useState<ClipShape>("original");
-  const [panel, setPanel] = useState<Panel>("tools");
+  const [panel, setPanel] = useState<Panel>(OFFERED_PANELS[0].id);
   const [boxDrag, setBoxDrag] = useState<BoxDrag | null>(null);
   const [barDrag, setBarDrag] = useState<BarDrag | null>(null);
   const [laneTrim, setLaneTrim] = useState<LaneTrim | null>(null);
@@ -942,7 +946,7 @@ export function ClipTrimmer({
 
       <div className="flex min-h-0 flex-1">
         <nav className="flex w-[5rem] shrink-0 flex-col gap-2 border-r border-white/10 bg-black/20 p-3">
-          {PANELS.map((entry) => (
+          {OFFERED_PANELS.map((entry) => (
             <button
               key={entry.id}
               type="button"
@@ -1305,20 +1309,24 @@ export function ClipTrimmer({
           onClick={history.redo}
           disabled={!history.canRedo}
         />
-        <ClipIconButton
-          icon="solar:scissors-square-bold"
-          label={t("clips.editor.transport.split")}
-          tooltipPosition="top"
-          onClick={split}
-          disabled={busy || !canSplit}
-        />
-        <ClipIconButton
-          icon="solar:trash-bin-trash-bold"
-          label={t("clips.editor.transport.remove")}
-          tooltipPosition="top"
-          onClick={cutPart}
-          disabled={busy || !cuttable}
-        />
+        {FULL_EDITOR && (
+          <>
+            <ClipIconButton
+              icon="solar:scissors-square-bold"
+              label={t("clips.editor.transport.split")}
+              tooltipPosition="top"
+              onClick={split}
+              disabled={busy || !canSplit}
+            />
+            <ClipIconButton
+              icon="solar:trash-bin-trash-bold"
+              label={t("clips.editor.transport.remove")}
+              tooltipPosition="top"
+              onClick={cutPart}
+              disabled={busy || !cuttable}
+            />
+          </>
+        )}
 
         <span className="ml-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-1 font-minecraft text-sm tabular-nums text-white/90">
           {formatTime(playhead)}
@@ -1337,7 +1345,7 @@ export function ClipTrimmer({
       </div>
 
       <div className="custom-scrollbar max-h-[34vh] shrink-0 overflow-y-auto border-t border-white/10 bg-black/20 px-5 py-3">
-        {movable.length > 0 && (
+        {FULL_EDITOR && movable.length > 0 && (
           <div className="mb-2.5 flex items-center gap-3">
             <TrackLink
               separate={separate}

@@ -575,7 +575,7 @@ impl CaptureSupervisor {
     async fn absorb(&self, event: CaptureToLauncher) {
         match event {
             CaptureToLauncher::Ready(info) => {
-                if info.protocol_version != norisk_ipc::PROTOCOL_VERSION {
+                if cfg!(not(target_os = "macos")) && info.protocol_version != norisk_ipc::PROTOCOL_VERSION {
                     log::error!(
                         "Capture engine speaks protocol {} but this launcher speaks {}",
                         info.protocol_version,

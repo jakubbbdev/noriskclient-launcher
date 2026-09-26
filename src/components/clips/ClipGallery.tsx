@@ -38,6 +38,7 @@ import { RenameClipModal } from "./RenameClipModal";
 import { VerticalExport } from "./VerticalExport";
 import { parseErrorMessage } from "../../utils/error-utils";
 import { trackEvent } from "../../services/analytics-service";
+import { isMacOS } from "../../utils/platform";
 
 export type ClipSort = "newest" | "oldest" | "largest";
 
@@ -465,7 +466,9 @@ function ClipCard({
       <div className="absolute top-2 right-2 z-20 flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-200">
         <ClipIconButton icon="solar:pen-bold" label={t("clips.gallery.rename")} onClick={onRename} />
         <ClipIconButton icon="solar:smartphone-bold" label={t("clips.gallery.vertical")} onClick={onVertical} />
-        <ClipIconButton icon="solar:gallery-bold" label={t("clips.gallery.gif")} onClick={onGif} />
+        {!isMacOS() && (
+          <ClipIconButton icon="solar:gallery-bold" label={t("clips.gallery.gif")} onClick={onGif} />
+        )}
         <ClipIconButton icon="solar:folder-with-files-bold" label={t("clips.gallery.reveal")} onClick={onReveal} />
         <ClipIconButton
           icon="solar:trash-bin-trash-bold"
