@@ -172,7 +172,14 @@ pub fn select_encoder(
     };
 
     for &hardware_only in passes {
-        for &candidate in &codecs {
+        let order: Vec<ClipCodec> = if !hardware_only && preference != EncoderPreference::Software {
+            std::iter::once(ClipCodec::H264)
+                .chain(codecs.iter().copied().filter(|&c| c != ClipCodec::H264))
+                .collect()
+        } else {
+            codecs.clone()
+        };
+        for &candidate in &order {
             let available: Vec<EncoderPreference> = capabilities
                 .iter()
                 .filter(|c| c.codec == candidate && c.available)
@@ -431,7 +438,7 @@ mod selection_tests {
     }
 
     #[test]
-    fn a_machine_without_hardware_still_records() {
+    fn a_machine_without_hardware_records_h264_on_the_processor_because_it_is_the_lightest() {
         let cpu_only = machine(&[
             (ClipCodec::H264, EncoderPreference::Software),
             (ClipCodec::H265, EncoderPreference::Software),
@@ -439,6 +446,16 @@ mod selection_tests {
 
         assert_eq!(
             select_encoder(ClipCodec::H265, EncoderPreference::Auto, &cpu_only),
+            Some((ClipCodec::H264, EncoderPreference::Software))
+        );
+    }
+
+    #[test]
+    fn a_machine_without_hardware_or_h264_still_records_what_it_can() {
+        let cpu_only = machine(&[(ClipCodec::H265, EncoderPreference::Software)]);
+
+        assert_eq!(
+            select_encoder(ClipCodec::Av1, EncoderPreference::Auto, &cpu_only),
             Some((ClipCodec::H265, EncoderPreference::Software))
         );
     }
