@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -121,6 +121,7 @@ const MAX_CLIP_SECONDS_RETAINED: u64 = 130;
 
 struct Pipeline {
     device: CaptureDevice,
+    hidden: Arc<AtomicBool>,
     source: FrameSource,
     encode_thread: Option<std::thread::JoinHandle<()>>,
     encode_done: Receiver<()>,
@@ -574,7 +575,9 @@ impl Engine {
             return;
         };
 
-        let Some(source) = window::client_size(pipeline.target.hwnd) else {
+        let source = window::client_size(pipeline.target.hwnd);
+        pipeline.hidden.store(source.is_none(), Ordering::Relaxed);
+        let Some(source) = source else {
             self.resize_settling = None;
             return;
         };
@@ -696,6 +699,10 @@ impl Engine {
         let pool = HwFramePool::new(&device, settings.width, settings.height)?;
         let (encoder, settings, chosen) = open_encoder(&pool, settings, chosen, &device.adapter_name)?;
         let extradata = encoder.extradata();
+        let black = black_frame(&device, &pool, settings.fps)
+            .inspect_err(|e| log::debug!("No black picture for a minimised game, holding its last frame instead: {e:#}"))
+            .ok();
+        let hidden = Arc::new(AtomicBool::new(false));
 
         let converter = if let Ok((_, texture)) = &hooked {
             let mut converter =
@@ -726,11 +733,12 @@ impl Engine {
         let encode_thread = {
             let ring = Arc::clone(&ring);
             let latency = Arc::clone(&encode_latency);
+            let hidden = Arc::clone(&hidden);
             std::thread::Builder::new()
                 .name("nrc-encode".into())
                 .spawn(move || {
                     let _done = encode_done_tx;
-                    encode_loop(encoder, frames_rx, ring, fps, latency)
+                    encode_loop(encoder, frames_rx, ring, fps, latency, black, hidden)
                 })
                 .context("could not start the encode thread")?
         };
@@ -843,6 +851,7 @@ impl Engine {
 
         self.active = Some(Pipeline {
             device: health_device,
+            hidden,
             target,
             audio,
             source,
@@ -1801,6 +1810,8 @@ fn encode_loop(
     ring: Arc<Mutex<RingBuffer>>,
     fps: u32,
     latency: LatencyWindow,
+    mut black: Option<PoolFrame>,
+    hidden: Arc<AtomicBool>,
 ) {
     use std::sync::mpsc::RecvTimeoutError;
 
@@ -1853,19 +1864,31 @@ fn encode_loop(
                 if frame.pts() <= last_pts {
                     frame.set_pts(last_pts + 1);
                 }
+                let pts = frame.pts();
 
-                if !emit(&mut encoder, &frame) {
+                let shown = match black.as_mut() {
+                    Some(black) if hidden.load(Ordering::Relaxed) => {
+                        black.set_pts(pts);
+                        &*black
+                    }
+                    _ => &frame,
+                };
+                if !emit(&mut encoder, shown) {
                     return;
                 }
-                last_pts = frame.pts();
+                last_pts = pts;
                 last = Some(frame);
             }
             Err(RecvTimeoutError::Timeout) => {
                 let Some(frame) = last.as_mut() else { continue };
 
                 last_pts += step;
-                frame.set_pts(last_pts);
-                if !emit(&mut encoder, frame) {
+                let shown = match black.as_mut() {
+                    Some(black) if hidden.load(Ordering::Relaxed) => black,
+                    _ => frame,
+                };
+                shown.set_pts(last_pts);
+                if !emit(&mut encoder, shown) {
                     return;
                 }
 
@@ -1952,6 +1975,48 @@ fn chrono_now() -> String {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     format!("{secs}")
+}
+
+fn black_frame(device: &CaptureDevice, pool: &HwFramePool, fps: u32) -> Result<PoolFrame> {
+    use windows::Win32::Graphics::Direct3D11::{
+        D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE, D3D11_SUBRESOURCE_DATA,
+        D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
+    };
+    use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
+
+    const SIDE: u32 = 16;
+    let pixels = [0u8, 0, 0, 255].repeat((SIDE * SIDE) as usize);
+    let desc = D3D11_TEXTURE2D_DESC {
+        Width: SIDE,
+        Height: SIDE,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+        SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
+        ..Default::default()
+    };
+    let data = D3D11_SUBRESOURCE_DATA {
+        pSysMem: pixels.as_ptr() as *const _,
+        SysMemPitch: SIDE * 4,
+        SysMemSlicePitch: 0,
+    };
+
+    let mut texture = None;
+    unsafe { device.device.CreateTexture2D(&desc, Some(&data), Some(&mut texture)) }
+        .context("could not make a black picture")?;
+    let texture = texture.context("the black picture came back empty")?;
+
+    let frame = pool.acquire()?;
+    let (target, slice) = frame.target();
+    Converter::new(device, (pool.width(), pool.height()), fps)?.convert(
+        &texture,
+        (SIDE, SIDE),
+        target,
+        slice,
+    )?;
+    Ok(frame)
 }
 
 fn open_encoder(
