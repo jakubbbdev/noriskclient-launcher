@@ -91,6 +91,7 @@ export function AppLayout({
     ...(clipsEnabled
       ? [{ id: "clips", icon: "solar:videocamera-record-bold", label: t("nav.clips") }]
       : []),
+    { id: "wrapped", icon: "solar:stars-bold", label: t("nav.wrapped") },
     // DISABLED: Advent Calendar (seasonal feature)
     // { id: "advent-calendar", icon: "solar:gift-bold", label: t("nav.advent") },
     { id: "settings", icon: "solar:settings-bold", label: t("nav.settings"), isAction: true },

@@ -3,6 +3,7 @@ import type { BlogPost } from '../types/wordPress';
 import type { UpdateInfo } from '../types/updater';
 import type { Profile } from '../types/profile';
 import type { AdventCalendarDay, Reward } from '../types/advent';
+import type { CommunityWrappedStats, WrappedStats } from '../types/wrapped';
 import type { UserNotification } from '../types/notification';
 import type {
   AfkPointsBalance,
@@ -273,6 +274,18 @@ export const checkUpdateAvailable = (): Promise<UpdateInfo | null> => {
  */
 export const downloadAndInstallUpdate = (): Promise<void> => {
   return invoke('download_and_install_update_command');
+};
+
+export const getWrapped = (): Promise<WrappedStats> => {
+  return invoke('get_wrapped_command');
+};
+
+export const getMcRealImage = (postId: string, imageType: "primary" | "secondary"): Promise<string> => {
+  return invoke("get_mcreal_image_command", { postId, imageType });
+};
+
+export const getWrappedCommunity = (): Promise<CommunityWrappedStats> => {
+  return invoke('get_wrapped_community_command');
 };
 
 /**

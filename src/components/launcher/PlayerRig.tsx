@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { SkinRenderer } from '@noriskclient/nrc-skin-renderer/react';
 import type { PromoOutlineConfig } from '@noriskclient/nrc-skin-renderer/postfx';
 import type { SnapshotCosmetic } from '@noriskclient/nrc-skin-renderer/snapshot';
+import type { EmoteAssetUrls } from '@noriskclient/nrc-skin-renderer/core';
 
 import { SkinViewer } from './SkinViewer';
 import { WebGLBoundary } from '../WebGLBoundary';
@@ -53,6 +54,7 @@ const flatStyle: React.CSSProperties = {
 interface PlayerRigProps {
   playerName: string | null | undefined;
   outline?: Partial<PromoOutlineConfig>;
+  emote?: EmoteAssetUrls | null;
 }
 
 function useMinLoading(active: boolean, minMs: number): boolean {
@@ -72,7 +74,7 @@ function useMinLoading(active: boolean, minMs: number): boolean {
   return active || !done;
 }
 
-export function PlayerRig({ playerName, outline }: PlayerRigProps) {
+export function PlayerRig({ playerName, outline, emote }: PlayerRigProps) {
   const { t } = useTranslation();
   const accentColor = useThemeStore((state) => state.accentColor);
   const activeAccount = useMinecraftAuthStore((state) => state.activeAccount);
@@ -157,9 +159,9 @@ export function PlayerRig({ playerName, outline }: PlayerRigProps) {
           textureUrl={rigTextureUrl}
           variant={rigVariant}
           cosmetics={rigCosmetics}
-          emote={idleEmote.urls}
-          emoteLoop={idleEmote.loop}
-          onEmoteEnd={idleEmote.onEnd}
+          emote={emote ?? idleEmote.urls}
+          emoteLoop={emote ? true : idleEmote.loop}
+          onEmoteEnd={emote ? undefined : idleEmote.onEnd}
           dragAxis="yaw"
           outline={outline}
           nametag={rigNametag}

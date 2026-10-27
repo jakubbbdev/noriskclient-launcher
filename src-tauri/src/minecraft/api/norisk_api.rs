@@ -623,6 +623,45 @@ impl NoRiskApi {
             .await
     }
 
+    pub async fn get_wrapped(norisk_token: &str, is_experimental: bool) -> Result<serde_json::Value> {
+        nrc_get(format!("{}/core/wrapped", Self::get_api_base(is_experimental)))
+            .bearer(norisk_token)
+            .json::<serde_json::Value>("Wrapped")
+            .await
+    }
+
+    pub async fn get_wrapped_community(norisk_token: &str, is_experimental: bool) -> Result<serde_json::Value> {
+        nrc_get(format!("{}/core/wrapped/community", Self::get_api_base(is_experimental)))
+            .bearer(norisk_token)
+            .json::<serde_json::Value>("Community wrapped")
+            .await
+    }
+
+    pub async fn get_mcreal_image(
+        norisk_token: &str,
+        post_id: &str,
+        image_type: &str,
+        is_experimental: bool,
+    ) -> Result<String> {
+        let base_url = Self::get_api_base(is_experimental);
+        let url = format!("{}/mcreal/post/{}/image?type={}", base_url, post_id, image_type);
+        let response = nrc_get(url).bearer(norisk_token).send("McReal image").await?;
+        if !response.status().is_success() {
+            return Err(AppError::RequestError(format!(
+                "McReal image request failed with status {}",
+                response.status()
+            )));
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| AppError::RequestError(format!("Failed to read McReal image: {}", e)))?;
+        Ok(format!(
+            "data:image/webp;base64,{}",
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes)
+        ))
+    }
+
     /// Claims a reward for a specific day in the advent calendar.
     pub async fn claim_advent_calendar_day(
         norisk_token: &str,

@@ -35,6 +35,21 @@ pub async fn get_random_local_emote() -> Result<Option<EmoteAssetUrlsDto>, Comma
     Ok(api_resolve_pack_emote(PACK_ID, &pack, &slug))
 }
 
+#[tauri::command]
+pub async fn get_local_emote(slugs: Vec<String>) -> Result<Option<EmoteAssetUrlsDto>, CommandError> {
+    let state = State::get().await?;
+    let pack = state
+        .cosmetic_pack_manager
+        .get_or_load(PACK_ID)
+        .await
+        .map_err(CommandError::from)?;
+    let local = local_emote_slugs(PACK_ID, &pack);
+    Ok(slugs
+        .iter()
+        .find(|slug| local.contains(slug))
+        .and_then(|slug| api_resolve_pack_emote(PACK_ID, &pack, slug)))
+}
+
 #[derive(Serialize)]
 pub struct EquippedCosmeticsDto {
     pub cosmetics: Vec<ResolvedCosmeticDto>,

@@ -108,7 +108,7 @@ use commands::cape_command::{
 };
 
 use commands::cosmetic_command::{
-    get_equipped_cosmetics, get_equipped_cosmetics_cached, get_random_local_emote,
+    get_equipped_cosmetics, get_equipped_cosmetics_cached, get_local_emote, get_random_local_emote,
 };
 use commands::icon_command::{
     get_active_creator_code, get_selected_player_icon, get_selected_player_icon_cached,
@@ -712,6 +712,7 @@ async fn main() {
             get_equipped_cosmetics,
             get_equipped_cosmetics_cached,
             get_random_local_emote,
+            get_local_emote,
             get_owned_capes_list,
             equip_cape,
             delete_cape,
@@ -818,6 +819,9 @@ async fn main() {
             commands::nrc_commands::reset_mobile_app_token,
             commands::nrc_commands::get_advent_calendar_command,
             commands::nrc_commands::claim_advent_calendar_day_command,
+            commands::nrc_commands::get_wrapped_command,
+            commands::nrc_commands::get_wrapped_community_command,
+            commands::nrc_commands::get_mcreal_image_command,
             commands::nrc_commands::get_unique_players_24h_command,
             commands::nrc_commands::get_referral_info,
             commands::nrc_commands::get_notifications,

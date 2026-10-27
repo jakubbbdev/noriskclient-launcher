@@ -9,6 +9,7 @@ import { ClipsPage } from "../components/tabs/ClipsPage";
 import { BrowseTabWrapper } from "../components/profiles/BrowseTabWrapper";
 import { ProfilesTabV2 } from "../components/tabs/ProfilesTabV2";
 import { ProfileDetailViewV2Wrapper } from "../components/profiles/ProfileDetailViewV2Wrapper";
+import { WrappedTab } from "../components/wrapped/WrappedTab";
 // DISABLED: Advent Calendar (seasonal feature)
 // import { AdventCalendarTab } from "../components/advent-calendar/AdventCalendarTab";
 import { ModDetailPage } from "../components/mods/ModDetailPage";
@@ -71,6 +72,10 @@ export const router = createHashRouter([
       {
         path: "clips",
         element: <ClipsPage />,
+      },
+      {
+        path: "wrapped",
+        element: <WrappedTab />,
       },
       // DISABLED: Advent Calendar (seasonal feature)
       // {

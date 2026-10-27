@@ -534,6 +534,41 @@ pub async fn claim_advent_calendar_day_command(tag: u32) -> Result<AdventCalenda
     Ok(NoRiskApi::claim_advent_calendar_day(&token, tag, &account_id_str, is_experimental).await?)
 }
 
+async fn active_norisk_token() -> Result<(String, bool), CommandError> {
+    let state = State::get().await?;
+    let is_experimental = state.config_manager.is_experimental_mode().await;
+    let account = state
+        .minecraft_account_manager_v2
+        .get_active_account()
+        .await?
+        .ok_or(AppError::AccountError("No active account found.".to_string()))?;
+    let token = account.norisk_credentials.get_token_for_mode(is_experimental)?;
+    Ok((token, is_experimental))
+}
+
+#[tauri::command]
+pub async fn get_wrapped_command() -> Result<serde_json::Value, CommandError> {
+    debug!("Executing get_wrapped_command");
+    let (token, is_experimental) = active_norisk_token().await?;
+    Ok(NoRiskApi::get_wrapped(&token, is_experimental).await?)
+}
+
+#[tauri::command]
+pub async fn get_wrapped_community_command() -> Result<serde_json::Value, CommandError> {
+    debug!("Executing get_wrapped_community_command");
+    let (token, is_experimental) = active_norisk_token().await?;
+    Ok(NoRiskApi::get_wrapped_community(&token, is_experimental).await?)
+}
+
+#[tauri::command]
+pub async fn get_mcreal_image_command(post_id: String, image_type: String) -> Result<String, CommandError> {
+    if !post_id.chars().all(|c| c.is_ascii_alphanumeric()) || !matches!(image_type.as_str(), "primary" | "secondary") {
+        return Err(AppError::Other("Invalid McReal image request".to_string()).into());
+    }
+    let (token, is_experimental) = active_norisk_token().await?;
+    Ok(NoRiskApi::get_mcreal_image(&token, &post_id, &image_type, is_experimental).await?)
+}
+
 /// Get information about a referral code.
 /// This is a public endpoint that doesn't require authentication.
 /// Used to display referrer info in the UI before login.

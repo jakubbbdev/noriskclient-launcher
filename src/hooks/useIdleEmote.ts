@@ -62,16 +62,25 @@ function assetUrl(u?: string | null): string | undefined {
   return /^https?:\/\//.test(u) ? u : convertFileSrc(u);
 }
 
+function toEmoteAssetUrls(dto: EmoteAssetUrlsDto): EmoteAssetUrls {
+  return {
+    animation: assetUrl(dto.animation)!,
+    geo: assetUrl(dto.geo),
+    texture: assetUrl(dto.texture),
+    mcmeta: assetUrl(dto.mcmeta),
+  };
+}
+
+export function loadLocalEmote(slugs: string[]): Promise<EmoteAssetUrls | null> {
+  return invoke<EmoteAssetUrlsDto | null>("get_local_emote", { slugs })
+    .then((dto) => (dto ? toEmoteAssetUrls(dto) : null))
+    .catch(() => null);
+}
+
 async function pickRandomLocalEmote(): Promise<EmoteAssetUrls | null> {
   try {
     const dto = await invoke<EmoteAssetUrlsDto | null>("get_random_local_emote");
-    if (!dto) return null;
-    return {
-      animation: assetUrl(dto.animation)!,
-      geo: assetUrl(dto.geo),
-      texture: assetUrl(dto.texture),
-      mcmeta: assetUrl(dto.mcmeta),
-    };
+    return dto ? toEmoteAssetUrls(dto) : null;
   } catch {
     return null;
   }
